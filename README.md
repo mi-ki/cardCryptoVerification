@@ -5,11 +5,11 @@ More details are explained in the corresponding [paper](https://formal.iti.kit.e
 
 The entry point should be the script [``run.sh``](run.sh) which requires the bounded model checking tool [CBMC](http://www.cprover.org/cbmc/) (must be installed on your system or in the same folder).
 
-Furthermore, you must specify the bounds for the desired protocol length.
-Assuming you choose the number **_n_**, you would type the following in your shell:
+Furthermore, you must specify the bound for the desired protocol length and the number of used cards.
+Assuming you choose the number **_n_** for protocol length and **_c_** for the number of cards, you would type the following in your shell:
 
 ```
-./run.sh n
+./run.sh c n
 ```
 
 For more information, please contact [Michael Kirsten](https://formal.iti.kit.edu/~kirsten/?lang=en)
