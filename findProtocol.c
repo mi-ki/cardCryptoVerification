@@ -24,32 +24,44 @@ void __CPROVER_assert(int x, char y[]);
 #define assert2(x, y) __CPROVER_assert(x, y)
 #define assume(x) __CPROVER_assume(x)
 
-// Size of input sequence (number of cards including both commitments plus additional cards).
+/**
+ * Size of input sequence (number of cards including both commitments plus additional cards).
+ */
 #ifndef N
 #define N 4
 #endif
 
-// Number of all cards used for commitments
+/**
+ * Number of all cards used for commitments
+ */
 #ifndef COMMIT
 #define COMMIT 4
 #endif
 
-// Protocol length.
+/**
+ * Protocol length.
+ */
 #ifndef L
 #define L 5
 #endif
 
-// Amount of different action types allowed in protocol, excluding result action.
+/**
+ * Amount of different action types allowed in protocol, excluding result action.
+ */
 #ifndef A
 #define A 2
 #endif
 
-// Number assigned to turn action.
+/**
+ * Number assigned to turn action.
+ */
 #ifndef TURN
 #define TURN 0
 #endif
 
-// Number assigned to permutation action.
+/**
+ * Number assigned to shuffle action.
+ */
 #ifndef SHUFFLE
 #define SHUFFLE 1
 #endif
@@ -79,42 +91,77 @@ void __CPROVER_assert(int x, char y[]);
     #define NUMBER_PROBABILITIES 4
 #endif
 
+/**
+ * For two players inserting yes or no to a protocol,
+ * there are four different possibilities how the protocol could start.
+ * For more players or other scenarios this value has to be adapted.
+ */
 #ifndef NUMBER_START_SEQS
 #define NUMBER_START_SEQS 4
 #endif
 
-// 1 is finite runtime, 0 is restart-free Las-Vegas.
+/**
+ * 1 is finite runtime, 0 is restart-free Las-Vegas.
+ */
 #ifndef FINITE_RUNTIME
 #define FINITE_RUNTIME 0
 #endif
 
-// If set to 1, only closed protocols with closed shuffles will be searched.
+/**
+ * If set to 1, only closed protocols with closed shuffles will be searched.
+ */
 #ifndef CLOSED_PROTOCOL
 #define CLOSED_PROTOCOL 0
 #endif
 
-// If set to 1, only protocols with random cuts will be searched.
+/**
+ * If set to 1, only protocols with random cuts will be searched.
+ */
 #ifndef FORCE_RANDOM_CUTS
 #define FORCE_RANDOM_CUTS 0
 #endif
 
-// Maximum number of sequences (N!).
+/**
+ * Maximum number of sequences (usually N!).
+ * This value can be lowered if there are multiple indistinguishable symbols in the deck.
+ * This variable is used for over-approximating loops such that
+ * their unrolling bound can be statically determined.
+ */
 #ifndef NUMBER_POSSIBLE_SEQUENCES
 #define NUMBER_POSSIBLE_SEQUENCES 24
 #endif
 
+/**
+ * This variable is used to limit the permutation set in any shuffle.
+ * This can reduce the running time of this program.
+ * When reducing this Variable, keep in mind that it could exclude some valid protocols,
+ * as some valid permutation sets are not longer considered.
+ */
 #ifndef MAX_PERM_SET_SIZE
 #define MAX_PERM_SET_SIZE NUMBER_POSSIBLE_SEQUENCES
 #endif
 
+/**
+ * After a turn, the protocol tree splits up in one subtree for each possible observation.
+ * You can use these two variables for restricting the number of observations after every turn.
+ * In our case, we exclude the "trivial turn" where the turned card is already known since the
+ * protocol would not branch there. Therefore we force the program to have at least two branches
+ * after every turn operation.
+ */
 #ifndef MIN_TURN_OBSERVATIONS
 #define MIN_TURN_OBSERVATIONS 2
 #endif
 
+/**
+ * See description of MIN_TURN_OBSERVATIONS above.
+ */
 #ifndef MAX_TURN_OBSERVATIONS
 #define MAX_TURN_OBSERVATIONS N
 #endif
 
+/**
+ * The number of states stored in the protocol run (Start state + all L derived states).
+ */
 #ifndef MAX_REACHABLE_STATES
 #define MAX_REACHABLE_STATES L+1
 #endif
@@ -128,50 +175,49 @@ struct fractions {
     struct fraction frac[NUMBER_PROBABILITIES];
 };
 
+/**
+ * This is one sequence, as seen from left to right.
+ *
+ * If the sequence can belong to a specific input sequence,
+ * then the probabilities entry is set to the probability for this input sequence.
+ * Indices:
+ * - 0: X_00
+ * - 1: X_01
+ * - 2: X_10
+ * - 3: X_11
+ *
+ * If the sequence is not contained in the state, all probabilities are set to zero.
+ *
+ * We save the probabilities as numerator/denominator (of type fraction),
+ * so we can avoid floating point operations and divisions.
+ *
+ * One line looks like this:
+ *   val:           [card#1][card#2]..[card#N]
+ *   probs:         [num#1]..[num#4]
+ *   (num./denom.)  [den#1]..[den#4]
+ *
+ * For input-possibilistic protocols,
+ * we only need to determine whether a sequence can belong to a specific input:
+ *    [card#1][card#2]..[card#N]
+ *    [bool#1]..[bool#4]
+ *
+ * For output-possibilistic protocols,
+ * we only need to determine whether a sequence can belong to a specific output:
+ *    [card#1][card#2]..[card#N]
+ *    [bool#1][bool#2]
+ * Note that in this scenario, we have bool#1 == X_0 and bool#2 == X_1.
+ */
 struct sequence {
-    /**
-     * This is one sequence, as seen from left to right.
-     *
-     * If the sequence can belong to a specific input sequence,
-     * then the probabilities entry is set to the probability for this input sequence.
-     * Indices:
-     * - 0: X_00
-     * - 1: X_01
-     * - 2: X_10
-     * - 3: X_11
-     *
-     * If the sequence is not contained in the state, all probabilities are set to zero.
-     *
-     * We save the probabilities as numerator/denominator (of type fraction),
-     * so we can avoid floating point operations and divisions.
-     *
-     * One line looks like this:
-     *   val:           [card#1][card#2]..[card#N]
-     *   prob:          [num#1]..[num#4]
-     *   (num./denom.)  [den#1]..[den#4]
-     *
-     * For input-possibilistic protocols,
-     * we only need to determine whether a sequence can belong to a specific input:
-     *    [card#1][card#2]..[card#N]
-     *    [bool#1]..[bool#4]
-     *
-     * For output-possibilistic protocols,
-     * we only need to determine whether a sequence can belong to a specific output:
-     *    [card#1][card#2]..[card#N]
-     *    [bool#1][bool#2]
-     * Note that in this scenario bool#1 == X_0 and bool#2 == X_1
-     *
-     */
     unsigned int val[N];
     struct fractions probs;
 };
 
+
+/**
+ * All sequences are remembered here, as seen from left to right, sorted alphabetically.
+ * The states in this program are equal to the states in KWH trees.
+ */
 struct state {
-    /**
-     * All sequences are remembered here, as seen from left to right. Sorted alphabetically.
-     * The states in this program are equal to the states in KWH trees.
-     *
-     */
     struct sequence seq[NUMBER_POSSIBLE_SEQUENCES];
 };
 
@@ -187,15 +233,28 @@ struct nstates {
     unsigned int isUsed[N];
 };
 
-// An integer array with length N.
+/**
+ * An integer array with length N.
+ */
 struct narray {
     unsigned int arr[N];
 };
 
+/**
+ * One bit is represented by two cards, a and b.
+ * If the first card is lower than the second card, the bit represents the value "0"
+ * If the first card is higher than the second card, the bit represents the value "1"
+ * Note that if both cards are equal, the bit is "undefined".
+ * This must not happen in our implementation, but must be considered for multiple
+ * indistinguishable cards.
+ */
 unsigned int isZero(unsigned int a, unsigned int b) {
     return a < b;
 }
 
+/**
+ * See description of isZero(uint, uint) above.
+ */
 unsigned int isOne(unsigned int a, unsigned int b) {
     return a > b;
 }
@@ -241,10 +300,18 @@ struct state getEmptyState() {
     return s;
 }
 
+/**
+ * We store one empty state at beginning of the program to save ressources.
+ */
 struct state emptyState;
 
+/**
+ * This method constructs the start sequence for a given commitment length COMMIT
+ * using nodeterministic assignments. We only consider the case where Alice uses
+ * the cards "1" and "2", and Bob uses the cards "3" and "4".
+ */
 struct narray getStartSequence() {
-    assume (N >= COMMIT); // We assume at least as many cards as needed for the commitments
+    assume (N >= COMMIT); // We assume at least as many cards as needed for the commitments.
     struct narray taken;
     for (unsigned int i = 0; i < N; i++) {
         taken.arr[i] = 0;
@@ -267,7 +334,11 @@ struct narray getStartSequence() {
     return res;
 }
 
-// Determines whether the sequence belongs to at least one input sequence.
+/**
+ * Determines whether the sequence belongs to at least one input sequence.
+ * This value is true iff the sequence could be generated from any of the protocol's
+ * input sequeces through the currently executed actions.
+ */
 unsigned int isStillPossible(struct fractions probs) {
     unsigned int res = 0;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
@@ -277,7 +348,7 @@ unsigned int isStillPossible(struct fractions probs) {
 }
 
 /**
- * Given an array, this function returns the index of the given sequence in a state.
+ * Given an array containing a sequence, we return the index of the given sequence in a state.
  */
 unsigned int getSequenceIndexFromArray(struct narray compare, struct state compareState) {
     unsigned int seqIdx = nondet_uint();
@@ -303,6 +374,9 @@ struct narray combinePermutations(struct narray firstPermutation,
      return result;
 }
 
+/**
+ * Check if the sequence is a bottom sequence (belongs to more than one possible output).
+ */
 unsigned int isBottom(struct fractions probs) {
     unsigned int bottom = 1;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
@@ -313,7 +387,9 @@ unsigned int isBottom(struct fractions probs) {
     return bottom;
 }
 
-// Check for bottom sequences.
+/**
+ * Check a state for bottom sequences.
+ */
 unsigned int isBottomFree(struct state s) {
     unsigned int res = 1;
     unsigned int done = 0;
@@ -345,23 +421,28 @@ unsigned int isValid(struct state s) {
         assume (seqIndexForThisProbability < NUMBER_POSSIBLE_SEQUENCES);
         struct sequence seq = s.seq[seqIndexForThisProbability];
 
-        // Now nondeterministic. We choose only sequences with probability > 0
-        // Cut the trace, if we need to find a protocol from a non-valid state
+        /*
+         * Now nondeterministic: We choose only sequences with probability > 0
+         * Cut the trace if we need to find a protocol from a non-valid state.
+         */
         assume (seq.probs.frac[k].num);
     }
 
     return res;
 }
 
-// Checks whether the state contains two columns that encode a valid result bit.
+/**
+ * Checks whether the state contains two columns that encode a valid result bit.
+ */
 unsigned int isFinalState(struct state s) {
     unsigned int res = 0;
 
-    if (isValid(s)) { // Non-valid states cannot be finite.
+    if (isValid(s)) { // Non-valid states cannot be final.
         res = 1;
         /**
-         * Check nondeterministically whether there are two columns encoding the result
-         * bit (they need to have only two symbols).
+         * Check nondeterministically whether there are two columns encoding the result bit
+         * (they need to have only two symbols, as otherwise we may be able to get information
+         * from the output basis of the result bit).
          */
         unsigned int a = nondet_uint(); // Index of the first card.
         unsigned int b = nondet_uint(); // Index of the second card.
@@ -403,6 +484,9 @@ unsigned int isFinalState(struct state s) {
     return res;
 }
 
+/**
+ * Check a permutation set whether it is closed under transitivity.
+ */
 void checkTransitivityOfPermutation(unsigned int permutationSet[MAX_PERM_SET_SIZE][N],
                                     unsigned int permSetSize) {
     unsigned int onlyPerm = (permSetSize == 1);
@@ -475,6 +559,9 @@ void checkTransitivityOfPermutation(unsigned int permutationSet[MAX_PERM_SET_SIZ
     }
 }
 
+/**
+ * Update the possibilities of a sequence after a shuffle.
+ */
 struct fractions recalculatePossibilities(struct fractions probs,
                                           struct fractions resProbs,
                                           unsigned int permSetSize) {
@@ -499,6 +586,9 @@ struct fractions recalculatePossibilities(struct fractions probs,
     return resProbs;
 }
 
+/**
+ * Calculate the state after a shuffle operation starting from s with the given permutation set.
+ */
 struct state doShuffle(struct state s,
                        unsigned int permutationSet[MAX_PERM_SET_SIZE][N],
                        unsigned int permSetSize) {
@@ -514,7 +604,7 @@ struct state doShuffle(struct state s,
                         // Apply permutation j to sequence i.
                         resultingSeq.arr[permutationSet[j][k]] = s.seq[i].val[k];
                     }
-                    unsigned int resultSeqIndex = // Get the index of the resulting sequence
+                    unsigned int resultSeqIndex = // Get the index of the resulting sequence.
                         getSequenceIndexFromArray(resultingSeq, res);
                     // Recalculate possibilities.
                     res.seq[resultSeqIndex].probs =
@@ -528,7 +618,9 @@ struct state doShuffle(struct state s,
     return res;
 }
 
-// Generate a nondeterministic permutation set and apply it to the given state.
+/**
+ * Generate a nondeterministic permutation set and apply it to the given state.
+ */
 struct state applyShuffle(struct state s) {
     // Generate permutation set (shuffles are assumed to be uniformly distributed).
     unsigned int permSetSize = nondet_uint();
@@ -566,7 +658,7 @@ struct state applyShuffle(struct state s) {
 
     if (CLOSED_PROTOCOL || FORCE_RANDOM_CUTS) { // Check for closedness.
         checkTransitivityOfPermutation(permutationSet, permSetSize);
-        // As in state trees, we want to have the identity included (if it is not a permutation)
+        // As in state trees, we want to include the identity if it is not a permutation.
         assume (permSetSize == 1 || takenPermutations[0] > 0);
     }
     // Apply the shuffle that was generated above.
@@ -647,6 +739,10 @@ struct fractions computeTurnProbabilities(struct nstates result) {
     return probs;
 }
 
+/**
+ * Given state and the position of a turned card,
+ * this function returns all branched states resulting from the turn.
+ */
 struct nstates copyObservations(struct state s, unsigned int turnPosition) {
     struct nstates result;
     // Initialise N empty states.
@@ -788,22 +884,37 @@ unsigned int performActions(struct state s) {
     return result;
 }
 
+/**
+ * Determine if a sequence in the start state belongs to the input possibility (0 0).
+ */
 unsigned int isZeroZero(unsigned int arr[N]) {
     return isZero(arr[0], arr[1]) && isZero(arr[2], arr[3]);
 }
 
+/**
+ * Determine if a sequence in the start state belongs to the input possibility (0 1).
+ */
 unsigned int isZeroOne(unsigned int arr[N]) {
     return isZero(arr[0], arr[1]) && isOne(arr[2], arr[3]);
 }
 
+/**
+ * Determine if a sequence in the start state belongs to the input possibility (1 0).
+ */
 unsigned int isOneZero(unsigned int arr[N]) {
     return isOne(arr[0], arr[1]) && isZero(arr[2], arr[3]);
 }
 
+/**
+ * Determine if a sequence in the start state belongs to the input possibility (1 1).
+ */
 unsigned int isOneOne(unsigned int arr[N]) {
     return isOne(arr[0], arr[1]) && isOne(arr[2], arr[3]);
 }
 
+/**
+ * Returns if the given sequnce is a input sequence in the start state.
+ */
 unsigned int inputProbability(unsigned int start,
                               unsigned int arr[N]) {
     assume (start < NUMBER_START_SEQS);
@@ -821,6 +932,7 @@ unsigned int inputProbability(unsigned int start,
 }
 
 int main() {
+	// Initialise an empty state
     emptyState = getEmptyState();
     struct state startState = emptyState;
 
@@ -865,9 +977,11 @@ int main() {
     unsigned int lastProbIdx = NUMBER_PROBABILITIES - 1;
     startState.seq[arrIdx].probs.frac[lastProbIdx].num = isOneOne(start[lastStartSeq].arr);
 
+    // Do actions nondeterministically until a protocol is found.
     unsigned int foundValidProtocol = performActions(startState);
     assume (foundValidProtocol);
 
+	// Fail the check iff a protocol is found, so we can read out the trace including the protocol.
     assert (0);
     return 0;
 }
