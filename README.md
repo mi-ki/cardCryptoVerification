@@ -12,9 +12,6 @@ Assuming you choose the number **_n_** for protocol length and **_c_** for the n
 ./run.sh c n
 ```
 
-For more information, please contact [Michael Kirsten](https://formal.iti.kit.edu/~kirsten/?lang=en)
-or [Alexander Koch](https://crypto.iti.kit.edu/index.php?id=akoch&L=2).
-
 ## Possible Configurations
 The program is of a general nature such that different modes are supported. The most notable ones are accessible by the following parameters:
 
@@ -29,3 +26,8 @@ You can use the parameters by appending
 '-D MODE PARAMETER'
 ```
 for each of the options (**MODE** stands for the keyword and **PARAMETER** for the value).
+
+
+
+For more information, please contact [Michael Kirsten](https://formal.iti.kit.edu/~kirsten/?lang=en)
+or [Alexander Koch](https://crypto.iti.kit.edu/index.php?id=akoch&L=2).
