@@ -15,19 +15,18 @@ Assuming you choose the number **_n_** for protocol length and **_c_** for the n
 ## Possible Configurations
 The program is of a general nature such that different modes are supported. The most notable ones are accessible by the following parameters:
 
-* **WEAK_SECURITY**: **0** denotes probabilistic security, **1** denotes input-possibilistic security, and **2** denotes output-possibilistic security.
-* **FINITE_RUNTIME**: **1** denotes finite runtime, **0** denotes restart-free Las Vegas.
-* **CLOSED_PROTOCOL**: **1** limits the search to closed protocols, i.e., only closed shuffles, **0** allows any shuffle operations.
-* **FORCE_RANDOM_CUTS**: **1** limits the search to random cuts, **0** makes no restriction
+* **WEAK_SECURITY**: The value **0** denotes probabilistic security, **1** denotes input-possibilistic security, and **2** denotes output-possibilistic security.
+* **FINITE_RUNTIME**: The value **1** denotes finite runtime, **0** denotes restart-free Las Vegas.
+* **CLOSED_PROTOCOL**: The value **1** limits the search to closed protocols, i.e., only closed shuffles, **0** allows any shuffle operations.
+* **FORCE_RANDOM_CUTS**: The value **1** limits the search to random cuts, **0** makes no restriction
 * **MAX_PERM_SET_SIZE**: This variable is used to limit the permutation set in any shuffle to reduce the running time of the program. Note however that reducing this constant could exclude some valid protocols as some valid permutation sets might no longer be considered.
 
-You can use the parameters by appending
+You can use the parameters by appending the following (do not omit the quotation marks) for each of the options (**MODE** stands for the keyword and **PARAMETER** for the value):
 ```
 '-D MODE PARAMETER'
 ```
-for each of the options (**MODE** stands for the keyword and **PARAMETER** for the value).
 
 
-
+## Contact
 For more information, please contact [Michael Kirsten](https://formal.iti.kit.edu/~kirsten/?lang=en)
 or [Alexander Koch](https://crypto.iti.kit.edu/index.php?id=akoch&L=2).
