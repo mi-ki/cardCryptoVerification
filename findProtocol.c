@@ -381,7 +381,7 @@ unsigned int isBottom(struct fractions probs) {
     unsigned int bottom = 1;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
         unsigned int currProb = probs.frac[i].num;
-        bottom = (WEAK_SECURITY == 2 || i == 3) ?
+        bottom = (WEAK_SECURITY == 2 || i == NUMBER_PROBABILITIES - 1) ?
             (bottom && currProb) : (bottom || currProb);
     }
     return bottom;
@@ -455,6 +455,7 @@ unsigned int isFinalState(struct state s) {
         for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
             if (!done && isStillPossible(s.seq[i].probs)) {
                 // IF XOR, SOMETHING LIKE THIS: 2 || 3
+                // CAUTION: ONLY FOR _AND_ FUNCTION!
                 unsigned int deciding = s.seq[i].probs.frac[NUMBER_PROBABILITIES - 1].num;
                 unsigned int first = s.seq[i].val[a];
                 unsigned int second = s.seq[i].val[b];
@@ -663,6 +664,9 @@ struct state applyShuffle(struct state s) {
     }
     // Apply the shuffle that was generated above.
     struct state res = doShuffle(s, permutationSet, permSetSize);
+
+    // Let's try to exploit symmetry: always X_00 on top
+    assume (0 < res.seq[0].probs.frac[0].num);
 
     assume (isBottomFree(res));
     return res;
