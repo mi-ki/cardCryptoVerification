@@ -25,20 +25,20 @@ The program is of a general nature such that different modes are supported. The 
 You can use the parameters by appending the following (do not omit the quotation marks) for each of the options (**MODE** stands for the keyword and **PARAMETER** for the value):
 
 ```
-'-D MODE PARAMETER'
+'-D MODE=PARAMETER'
 ```
 
 ## Example
 For the experiments in the [paper](http://eprint.iacr.org/2019/1037), we used the configuration executed by the shell command
 
 ```
-./run.sh 4 5 '-D WEAK_SECURITY 2' '-D MAX_PERM_SET_SIZE 8' '-D CLOSED_PROTOCOL 1'
+./run.sh 4 5 '-D WEAK_SECURITY=2' '-D MAX_PERM_SET_SIZE=8' '-D CLOSED_PROTOCOL=1'
 ```
 
 for showing that no four-card protocol exists using five operations, as well as
 
 ```
-./run.sh 4 6 '-D WEAK_SECURITY 2' '-D MAX_PERM_SET_SIZE 8' '-D CLOSED_PROTOCOL 1'
+./run.sh 4 6 '-D WEAK_SECURITY=2' '-D MAX_PERM_SET_SIZE=8' '-D CLOSED_PROTOCOL=1'
 ```
 
 for constructing an output-possibilistic protocol using six operations.
