@@ -40,33 +40,12 @@ void __CPROVER_assert(int x, char y[]);
 
 
 /**
- * Number of all cards used for commitments
- */
-#ifndef COMMIT
-#define COMMIT 4
-#endif
-
-/**
  * Protocol length.
  */
 #ifndef L
 #define L 1
 #endif
 
-/**
- * Amount of different action types allowed in protocol, excluding result action.
- */
-#ifndef A
-#define A 1
-#endif
-
-
-/**
- * Number assigned to shuffle action.
- */
-#ifndef SHUFFLE
-#define SHUFFLE 0
-#endif
 
 /**
  * Regarding possibilities for a sequence, we (only) consider
@@ -631,11 +610,6 @@ unsigned int performActions(struct state s) {
     }
 
     for (unsigned int i = 0; i < L; i++) {
-        // Choose the action nondeterministically.
-        //unsigned int action = nondet_uint();
-        //assume (action < A);
-        // If A is greater than 2, we must add cases for additional actions below.
-        //assume (A == 2);
         unsigned int next = i + 1;
 
         if (1) {
