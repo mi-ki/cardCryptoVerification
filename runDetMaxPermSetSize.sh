@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (C) 2019 Michael Kirsten, Michael Schrempp, Alexander Koch
+# Copyright (C) 2020 Michael Kirsten, Michael Schrempp, Alexander Koch
 
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
