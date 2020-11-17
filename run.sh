@@ -21,12 +21,14 @@ START_SEC=$(date +%s)
 TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
 FILE="findProtocol.c"
-OUTFILE="protocol_"$START_PRINT".out"
+HOST=`echo -e $(hostname)`
+OUTFILE="protocol_"$HOST"_"$START_PRINT".out"
 TRACE_OPTS='--compact-trace --trace-hex'
 TIMEOUT="5d"
 N=$1
 LENGTH=$2
 OPT=$3
+NUM_SYM=$N # This is the setting where all cards carry distinct symbols
 
 OPTS=''
 while [ -n "$3" ]
@@ -120,7 +122,7 @@ echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
 echo -e "# N = "$N", L = "$LENGTH", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D $POS_SEQ_STRING=$POS_SEQ -D PERM_SET_SIZE=$PERM_SET_SIZE $FILE $OPT 2>&1 | tee -a $OUTFILE
+timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D PERM_SET_SIZE=$PERM_SET_SIZE $FILE $OPT 2>&1 | tee -a $OUTFILE
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END

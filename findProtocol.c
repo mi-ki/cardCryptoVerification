@@ -32,6 +32,14 @@ void __CPROVER_assert(int x, char y[]);
 #endif
 
 /**
+ * Amount of distinguishable card symbols.
+ */
+#ifndef NUM_SYM
+#define NUM_SYM 4
+#endif
+
+
+/**
  * Number of all cards used for commitments
  */
 #ifndef COMMIT
@@ -76,7 +84,7 @@ void __CPROVER_assert(int x, char y[]);
  *      (to which output the sequence can belong)
  */
 #ifndef WEAK_SECURITY
-#define WEAK_SECURITY 0
+#define WEAK_SECURITY 2
 #endif
 
 /**
@@ -102,6 +110,7 @@ void __CPROVER_assert(int x, char y[]);
 
 /**
  * 1 is finite runtime, 0 is restart-free Las-Vegas.
+ * NOTE: this feature is not implemented yet
  */
 #ifndef FINITE_RUNTIME
 #define FINITE_RUNTIME 0
@@ -156,7 +165,7 @@ void __CPROVER_assert(int x, char y[]);
  * See description of MIN_TURN_OBSERVATIONS above.
  */
 #ifndef MAX_TURN_OBSERVATIONS
-#define MAX_TURN_OBSERVATIONS N
+#define MAX_TURN_OBSERVATIONS NUM_SYM
 #endif
 
 /**
@@ -228,9 +237,9 @@ struct state {
  * state X-1 and moreover isUsed[X-1] == 1 holds.
  * If a card Y cannot be observed in the turn operation, then isUsed[Y-1] == 0 must hold.
  */
-struct nstates {
-    struct state states[N];
-    unsigned int isUsed[N];
+struct turnStates {
+    struct state states[MAX_TURN_OBSERVATIONS];
+    unsigned int isUsed[MAX_TURN_OBSERVATIONS];
 };
 
 /**
@@ -238,6 +247,13 @@ struct nstates {
  */
 struct narray {
     unsigned int arr[N];
+};
+
+/**
+ * An integer array with length NUM_SYM.
+ */
+struct numsymarray {
+    unsigned int arr[NUM_SYM];
 };
 
 /**
@@ -265,17 +281,17 @@ unsigned int isOne(unsigned int a, unsigned int b) {
 struct state getEmptyState() {
     struct state s;
     for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
-        struct narray taken;
-        for (unsigned int j = 0; j < N; j++) {
+        struct numsymarray taken;
+        for (unsigned int j = 0; j < NUM_SYM; j++) {
             taken.arr[j] = 0;
         }
         for (unsigned int j = 0; j < N; j++) {
             s.seq[i].val[j] = nondet_uint();
             unsigned int val = s.seq[i].val[j];
-            assume (0 < val && val <= N);
+            assume (0 < val && val <= COMMIT && val <= NUM_SYM);
             unsigned int idx = val - 1;
-            assume (!taken.arr[idx]);
-            taken.arr[idx] = 1;
+            assume (taken.arr[idx] < COMMIT / NUM_SYM);
+            taken.arr[idx]++;
         }
 
         // Here we store the numerators and denominators
@@ -312,18 +328,18 @@ struct state emptyState;
  */
 struct narray getStartSequence() {
     assume (N >= COMMIT); // We assume at least as many cards as needed for the commitments.
-    struct narray taken;
-    for (unsigned int i = 0; i < N; i++) {
+    struct numsymarray taken;
+    for (unsigned int i = 0; i < NUM_SYM; i++) {
         taken.arr[i] = 0;
     }
     struct narray res;
     for (unsigned int i = 0; i < COMMIT; i++) {
         res.arr[i] = nondet_uint();
         unsigned int val = res.arr[i];
-        assume (0 < val && val <= COMMIT);
+        assume (0 < val && val <= COMMIT && val <= NUM_SYM);
         unsigned int idx = val - 1;
-        assume (!taken.arr[idx]);
-        taken.arr[idx] = 1;
+        assume (taken.arr[idx] < COMMIT / NUM_SYM);
+        taken.arr[idx]++;
         // Here we assume that we first have 1 or 2 and only afterwards 3 or 4
         assume ((i != 0 && i != 1) || val == 1 || val == 2);
         assume ((i != 2 && i != 3) || val == 3 || val == 4);
@@ -458,6 +474,7 @@ unsigned int isFinalState(struct state s) {
                 unsigned int deciding = s.seq[i].probs.frac[NUMBER_PROBABILITIES - 1].num;
                 unsigned int first = s.seq[i].val[a];
                 unsigned int second = s.seq[i].val[b];
+                assume (first != second);
                 if (!higherCard && !lowerCard) {
                     // In a 1-sequence, the first card is higher, otherwise the second one.
                     higherCard = deciding ? first : second;
@@ -668,9 +685,9 @@ struct state applyShuffle(struct state s) {
     return res;
 }
 
-struct nstates alignAndAssignFractions(struct nstates result,
-                                       struct fractions probs) {
-    for (unsigned int i = 0; i < N; i++) {
+struct turnStates alignAndAssignFractions(struct turnStates result,
+                                          struct fractions probs) {
+    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
         if (result.isUsed[i]) {
             unsigned int newDenominator = 1;
             /**
@@ -701,14 +718,14 @@ struct nstates alignAndAssignFractions(struct nstates result,
     return result;
 }
 
-struct fractions computeTurnProbabilities(struct nstates result) {
+struct fractions computeTurnProbabilities(struct turnStates result) {
     struct fractions probs;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
         probs.frac[i].num = 0;
         // We later want to multiply all denominators with each other.
         probs.frac[i].den = 1;
     }
-    for (unsigned int i = 0; i < N; i++) {
+    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
         if (result.isUsed[i]) { // Only recalculate states that are used later.
             struct state resultState = result.states[i];
             // Add up all possibilities in a state.
@@ -743,10 +760,10 @@ struct fractions computeTurnProbabilities(struct nstates result) {
  * Given state and the position of a turned card,
  * this function returns all branched states resulting from the turn.
  */
-struct nstates copyObservations(struct state s, unsigned int turnPosition) {
-    struct nstates result;
+struct turnStates copyObservations(struct state s, unsigned int turnPosition) {
+    struct turnStates result;
     // Initialise N empty states.
-    for (unsigned int i = 0; i < N; i++) {
+    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
         result.states[i] = emptyState;
         result.isUsed[i] = 0;
     }
@@ -782,16 +799,16 @@ struct nstates copyObservations(struct state s, unsigned int turnPosition) {
  * Turn at a nondeterministic position and return all resulting states. For each possible
  * observation, there is a distinct state. If an observation cannot occur through this
  * turn operation, the according isUsed entry is set to zero. For more information, refer
- * to the documentation of "nstates".
+ * to the documentation of "turnStates".
  */
-struct nstates applyTurn(struct state s) {
+struct turnStates applyTurn(struct state s) {
     // Choose turn position nondeterministically, otherwise we cannot do two turns in a row.
     unsigned int turnPosition = nondet_uint();
     assume (turnPosition < N);
 
-    struct nstates result = copyObservations(s, turnPosition);
+    struct turnStates result = copyObservations(s, turnPosition);
     if (WEAK_SECURITY) { // Weaker security check: output-possibilistic or input-possibilistic.
-        for (unsigned int stateNumber = 0; stateNumber < N; stateNumber++) {
+        for (unsigned int stateNumber = 0; stateNumber < MAX_TURN_OBSERVATIONS; stateNumber++) {
             if (result.isUsed[stateNumber]) {
                 struct state resultState = result.states[stateNumber];
                 // Now nondeterministic. We only need to find one sequence for
@@ -842,10 +859,10 @@ unsigned int performActions(struct state s) {
              * reachableStates array. For every used state, we get another path
              * in the protocol that must be processed.
              */
-            struct nstates possiblePostStates = applyTurn(reachableStates[i]);
+            struct turnStates possiblePostStates = applyTurn(reachableStates[i]);
 
             unsigned int stateIdx = nondet_uint();
-            assume (stateIdx < N);
+            assume (stateIdx < MAX_TURN_OBSERVATIONS);
             assume (possiblePostStates.isUsed[stateIdx]);
             reachableStates[next] = possiblePostStates.states[stateIdx];
             if (!FINITE_RUNTIME) { // Restart-free Las-Vegas.
@@ -855,7 +872,7 @@ unsigned int performActions(struct state s) {
                 }
             } else {
                 unsigned int isFinalTurn = 1;
-                for (unsigned int j = 0; j < N; j++) {
+                for (unsigned int j = 0; j < MAX_TURN_OBSERVATIONS; j++) {
                     if (    possiblePostStates.isUsed[j]
                         && !isFinalState(possiblePostStates.states[j])) {
                         isFinalTurn = 0;
