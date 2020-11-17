@@ -20,15 +20,16 @@ START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e
 START_SEC=$(date +%s)
 TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
-FILE="findProtocol.c"
+FILE="determineMaxPermSetSize.c"
 HOST=`echo -e $(hostname)`
-OUTFILE="protocol_"$HOST"_"$START_PRINT".out"
+OUTFILE="detTwoColPermedStates_"$HOST"_"$START_PRINT".out"
 TRACE_OPTS='--compact-trace --trace-hex'
 TIMEOUT="5d"
 N=$1
-LENGTH=$2
+MINPERMS=$2
+LENGTH='1'
 OPT=$3
-NUM_SYM=$N # This is the setting where all cards carry distinct symbols
+NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 
 OPTS=''
 while [ -n "$3" ]
@@ -81,6 +82,20 @@ then
     exit
 fi
 
+TWO='2' # Decks with only one distinguishable card are kind of senseless
+if [ "$NUM_SYM" -lt $TWO ]
+then
+    echo -e "Program only supports a minimum number of two distinct card symbols. You entered the value "$NUM_SYM" for distinct symbols. Now terminating."
+    exit
+fi
+
+# Decks with more distinguishable cards than total cards can probably be represented in some other way using less distinguishable cards.
+if [ "$NUM_SYM" -gt $N ]
+then
+    echo -e "Program only supports a number of possible distinct cards which equals at most the total number of cards. You entered the value "$NUM_SYM" for distinct symbols, where there are only "$N" cards in total. Now terminating."
+    exit
+fi
+
 if [[ $LENGTH == "" ]] || (( "$LENGTH" <= "0" ))
 then
     echo -e "No valid protocol length specified. Now terminating."
@@ -110,19 +125,43 @@ fact ()
   return $factorial
 }
 
+
+NOM='0'
+DENOM='1'
+VAL=$[$N / $NUM_SYM]
+fact $VAL
+FOO=$?
+BOUND=$[$NUM_SYM - 1]
+
+for i in $(eval echo "{1..$BOUND}")
+do
+    NOM=$[$NOM + $VAL]
+    DENOM=$[$DENOM * $FOO]
+done
+
+REST=$[$N - $NOM]
+fact $REST
+FOO=$?
+DENOM=$[$DENOM * $FOO]
+
 fact $N
-POS_SEQ=$?
+FOO=$?
+
+POS_SEQ=$[$FOO / $DENOM]
 POS_SEQ_STRING="NUMBER_POSSIBLE_SEQUENCES"
+
+POS_PERM=$FOO
+POS_PERM_STRING="NUMBER_POSSIBLE_PERMUTATIONS"
 
 NUMBER_CLOSED_SHUFFLES=(0 1 2 6 30 156 1455 11300 151221)
 PERM_SET_SIZE="${NUMBER_CLOSED_SHUFFLES[$N]}"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
-echo -e "# N = "$N", L = "$LENGTH", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
+echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", MIN_PERM_SET_SIZE="$MINPERMS", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D PERM_SET_SIZE=$PERM_SET_SIZE $FILE $OPT 2>&1 | tee -a $OUTFILE
+timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D MIN_PERM_SET_SIZE=$MINPERMS $FILE $OPT 2>&1 | tee -a $OUTFILE
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END

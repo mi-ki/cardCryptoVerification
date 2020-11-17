@@ -20,15 +20,15 @@ START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e
 START_SEC=$(date +%s)
 TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
-FILE="findProtocol.c"
+FILE="findTwoCardProtocol.c"
 HOST=`echo -e $(hostname)`
-OUTFILE="protocol_"$HOST"_"$START_PRINT".out"
+OUTFILE="twoCardProtocol_"$HOST"_"$START_PRINT".out"
 TRACE_OPTS='--compact-trace --trace-hex'
 TIMEOUT="5d"
 N=$1
 LENGTH=$2
 OPT=$3
-NUM_SYM=$N # This is the setting where all cards carry distinct symbols
+NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 
 OPTS=''
 while [ -n "$3" ]
@@ -81,6 +81,20 @@ then
     exit
 fi
 
+TWO='2' # Decks with only one distinguishable card are kind of senseless
+if [ "$NUM_SYM" -lt $TWO ]
+then
+    echo -e "Program only supports a minimum number of two distinct card symbols. You entered the value "$NUM_SYM" for distinct symbols. Now terminating."
+    exit
+fi
+
+# Decks with more distinguishable cards than total cards can probably be represented in some other way using less distinguishable cards.
+if [ "$NUM_SYM" -gt $N ]
+then
+    echo -e "Program only supports a number of possible distinct cards which equals at most the total number of cards. You entered the value "$NUM_SYM" for distinct symbols, where there are only "$N" cards in total. Now terminating."
+    exit
+fi
+
 if [[ $LENGTH == "" ]] || (( "$LENGTH" <= "0" ))
 then
     echo -e "No valid protocol length specified. Now terminating."
@@ -110,19 +124,76 @@ fact ()
   return $factorial
 }
 
+
+NOM='0'
+DENOM='1'
+VAL=$[$N / $NUM_SYM]
+fact $VAL
+FOO=$?
+BOUND=$[$NUM_SYM - 1]
+
+for i in $(eval echo "{1..$BOUND}")
+do
+    NOM=$[$NOM + $VAL]
+    DENOM=$[$DENOM * $FOO]
+done
+
+REST=$[$N - $NOM]
+fact $REST
+FOO=$?
+DENOM=$[$DENOM * $FOO]
+
 fact $N
-POS_SEQ=$?
+FOO=$?
+
+POS_SEQ=$[$FOO / $DENOM]
 POS_SEQ_STRING="NUMBER_POSSIBLE_SEQUENCES"
+
+POS_PERM=$FOO
+POS_PERM_STRING="NUMBER_POSSIBLE_PERMUTATIONS"
 
 NUMBER_CLOSED_SHUFFLES=(0 1 2 6 30 156 1455 11300 151221)
 PERM_SET_SIZE="${NUMBER_CLOSED_SHUFFLES[$N]}"
 
+FIVE='5' # To be changed when we support more card numbers
+THREE='3'
+SUBGROUP_SIZES=""
+
+# if we had something like this:
+# Hard-coded values, look up at https://groupprops.subwiki.org/wiki/Subgroup_structure_of_symmetric_group:S5
+# * (We could even omit the largest number here, even)
+# * S5_subgroup_sizes = {1, 2, 3, 4, 5, 6, 8, 10, 12, 20, 24, 60, 120} // leave out 1, 120
+# * S4_subgroup_sizes = {1, 2, 3, 4, 6, 8, 12, 24} // leave out 1, 24
+# * S3_subgroup_sizes = {1, 2, 3, 6} // leave out 1, 6
+# * we could check for permSetSize being equal to one of the numbers in the list
+if [ "$N" -gt $FIVE ]
+then
+    NUMBER_SUBGROUP_SIZES='0'
+elif [ "$N" -eq $FIVE ]
+then
+    NUMBER_SUBGROUP_SIZES='11' # We can leave out 1 and 120
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_1=2 -D SUBGROUP_SIZE_2=3 -D SUBGROUP_SIZE_3=4 -D SUBGROUP_SIZE_4=5"
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_5=6 -D SUBGROUP_SIZE_6=8 -D SUBGROUP_SIZE_7=10 -D SUBGROUP_SIZE_8=12"
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_9=20 -D SUBGROUP_SIZE_10=24 -D SUBGROUP_SIZE_11=60 "
+elif [ "$N" -eq $FOUR ]
+then
+    NUMBER_SUBGROUP_SIZES='6' # We can leave out 1 and 24
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_1=2 -D SUBGROUP_SIZE_2=3 -D SUBGROUP_SIZE_3=4 "
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_4=6 -D SUBGROUP_SIZE_5=8 -D SUBGROUP_SIZE_6=12 "
+elif [ "$N" -eq $THREE ]
+then
+    NUMBER_SUBGROUP_SIZES='2' # We can leave out 1 and 6
+    SUBGROUP_SIZES=$SUBGROUP_SIZES" -D SUBGROUP_SIZE_1=2 -D SUBGROUP_SIZE_2=3 "
+else
+    NUMBER_SUBGROUP_SIZES='0'
+fi
+
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
-echo -e "# N = "$N", L = "$LENGTH", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
+echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D PERM_SET_SIZE=$PERM_SET_SIZE $FILE $OPT 2>&1 | tee -a $OUTFILE
+timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPT 2>&1 | tee -a $OUTFILE
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END

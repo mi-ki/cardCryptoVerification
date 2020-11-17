@@ -40,39 +40,12 @@ void __CPROVER_assert(int x, char y[]);
 
 
 /**
- * Number of all cards used for commitments
- */
-#ifndef COMMIT
-#define COMMIT 4
-#endif
-
-/**
  * Protocol length.
  */
 #ifndef L
-#define L 5
+#define L 1
 #endif
 
-/**
- * Amount of different action types allowed in protocol, excluding result action.
- */
-#ifndef A
-#define A 2
-#endif
-
-/**
- * Number assigned to turn action.
- */
-#ifndef TURN
-#define TURN 0
-#endif
-
-/**
- * Number assigned to shuffle action.
- */
-#ifndef SHUFFLE
-#define SHUFFLE 1
-#endif
 
 /**
  * Regarding possibilities for a sequence, we (only) consider
@@ -99,22 +72,6 @@ void __CPROVER_assert(int x, char y[]);
     #define NUMBER_PROBABILITIES 4
 #endif
 
-/**
- * For two players inserting yes or no to a protocol,
- * there are four different possibilities how the protocol could start.
- * For more players or other scenarios this value has to be adapted.
- */
-#ifndef NUMBER_START_SEQS
-#define NUMBER_START_SEQS 4
-#endif
-
-/**
- * 1 is finite runtime, 0 is restart-free Las-Vegas.
- * NOTE: this feature is not implemented yet
- */
-#ifndef FINITE_RUNTIME
-#define FINITE_RUNTIME 0
-#endif
 
 /**
  * If set to 1, only closed protocols with closed shuffles will be searched.
@@ -141,32 +98,30 @@ void __CPROVER_assert(int x, char y[]);
 #endif
 
 /**
+ * Maximum number of permutations fpr the given number of cards (N!).
+ * This value has to be computed by our script, or adjusted manually.
+ */
+#ifndef NUMBER_POSSIBLE_PERMUTATIONS
+#define NUMBER_POSSIBLE_PERMUTATIONS 24
+#endif
+
+/**
  * This variable is used to limit the permutation set in any shuffle.
  * This can reduce the running time of this program.
  * When reducing this Variable, keep in mind that it could exclude some valid protocols,
  * as some valid permutation sets are not longer considered.
  */
 #ifndef MAX_PERM_SET_SIZE
-#define MAX_PERM_SET_SIZE NUMBER_POSSIBLE_SEQUENCES
+#define MAX_PERM_SET_SIZE NUMBER_POSSIBLE_PERMUTATIONS
 #endif
 
 /**
- * After a turn, the protocol tree splits up in one subtree for each possible observation.
- * You can use these two variables for restricting the number of observations after every turn.
- * In our case, we exclude the "trivial turn" where the turned card is already known since the
- * protocol would not branch there. Therefore we force the program to have at least two branches
- * after every turn operation.
+ * This should be increased up to the point where no botfree state is found
  */
-#ifndef MIN_TURN_OBSERVATIONS
-#define MIN_TURN_OBSERVATIONS 2
+#ifndef MIN_PERM_SET_SIZE
+#define MIN_PERM_SET_SIZE 12
 #endif
 
-/**
- * See description of MIN_TURN_OBSERVATIONS above.
- */
-#ifndef MAX_TURN_OBSERVATIONS
-#define MAX_TURN_OBSERVATIONS NUM_SYM
-#endif
 
 /**
  * The number of states stored in the protocol run (Start state + all L derived states).
@@ -231,16 +186,12 @@ struct state {
 };
 
 /**
- * We use this struct to return arrays of states after turn operations.
- * There is one state for each possible observation.
- * In each turn, each sequence with an observable card #X is stored in
- * state X-1 and moreover isUsed[X-1] == 1 holds.
- * If a card Y cannot be observed in the turn operation, then isUsed[Y-1] == 0 must hold.
+ * All permutations are remembered here, as seen from left to right, sorted alphabetically.
  */
-struct turnStates {
-    struct state states[MAX_TURN_OBSERVATIONS];
-    unsigned int isUsed[MAX_TURN_OBSERVATIONS];
+struct permutationState {
+    struct sequence seq[NUMBER_POSSIBLE_PERMUTATIONS];
 };
+
 
 /**
  * An integer array with length N.
@@ -256,30 +207,17 @@ struct numsymarray {
     unsigned int arr[NUM_SYM];
 };
 
-/**
- * One bit is represented by two cards, a and b.
- * If the first card is lower than the second card, the bit represents the value "0"
- * If the first card is higher than the second card, the bit represents the value "1"
- * Note that if both cards are equal, the bit is "undefined".
- * This must not happen in our implementation, but must be considered for multiple
- * indistinguishable cards.
- */
-unsigned int isZero(unsigned int a, unsigned int b) {
-    return a < b;
-}
-
-/**
- * See description of isZero(uint, uint) above.
- */
-unsigned int isOne(unsigned int a, unsigned int b) {
-    return a > b;
-}
 
 /**
  * Constructor for states. Only use this to create new states.
  */
 struct state getEmptyState() {
     struct state s;
+    struct numsymarray symbolCount;
+    for (unsigned int i = 0; i < NUM_SYM; i++) {
+        symbolCount.arr[i] = 0;
+    }
+
     for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
         struct numsymarray taken;
         for (unsigned int j = 0; j < NUM_SYM; j++) {
@@ -288,10 +226,17 @@ struct state getEmptyState() {
         for (unsigned int j = 0; j < N; j++) {
             s.seq[i].val[j] = nondet_uint();
             unsigned int val = s.seq[i].val[j];
-            assume (0 < val && val <= COMMIT && val <= NUM_SYM);
+            assume (0 < val  && val <= NUM_SYM);
             unsigned int idx = val - 1;
-            assume (taken.arr[idx] < COMMIT / NUM_SYM);
             taken.arr[idx]++;
+            assume (taken.arr[idx] <= N-2); // At least two symbols have to be different. Players can't commit otherwise.
+        }
+        for (unsigned int  j = 0; j < NUM_SYM; j++) {
+            if(i == 0) {
+                symbolCount.arr[j] = taken.arr[j];
+            } else {
+                assume(taken.arr[j] == symbolCount.arr[j]); // We ensure, that every sequence consists of the same symbols
+            }
         }
 
         // Here we store the numerators and denominators
@@ -322,33 +267,10 @@ struct state getEmptyState() {
 struct state emptyState;
 
 /**
- * This method constructs the start sequence for a given commitment length COMMIT
- * using nodeterministic assignments. We only consider the case where Alice uses
- * the cards "1" and "2", and Bob uses the cards "3" and "4".
+ * We store all possible permutations into a seperate state to save resources.
  */
-struct narray getStartSequence() {
-    assume (N >= COMMIT); // We assume at least as many cards as needed for the commitments.
-    struct numsymarray taken;
-    for (unsigned int i = 0; i < NUM_SYM; i++) {
-        taken.arr[i] = 0;
-    }
-    struct narray res;
-    for (unsigned int i = 0; i < COMMIT; i++) {
-        res.arr[i] = nondet_uint();
-        unsigned int val = res.arr[i];
-        assume (0 < val && val <= COMMIT && val <= NUM_SYM);
-        unsigned int idx = val - 1;
-        assume (taken.arr[idx] < COMMIT / NUM_SYM);
-        taken.arr[idx]++;
-        // Here we assume that we first have 1 or 2 and only afterwards 3 or 4
-        assume ((i != 0 && i != 1) || val == 1 || val == 2);
-        assume ((i != 2 && i != 3) || val == 3 || val == 4);
-    }
-    for (unsigned int i = COMMIT; i < N; i++) {
-        res.arr[i] = i + 1;
-    }
-    return res;
-}
+struct permutationState stateWithAllPermutations;
+
 
 /**
  * Determines whether the sequence belongs to at least one input sequence.
@@ -377,6 +299,46 @@ unsigned int getSequenceIndexFromArray(struct narray compare, struct state compa
     return seqIdx;
 }
 
+struct permutationState getStateWithAllPermutations() {
+ struct permutationState s;
+    for (unsigned int i = 0; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        struct narray taken;
+        for (unsigned int j = 0; j < N; j++) {
+            taken.arr[j] = 0;
+        }
+        for (unsigned int j = 0; j < N; j++) {
+            s.seq[i].val[j] = nondet_uint();
+            unsigned int val = s.seq[i].val[j];
+            assume (0 < val && val <= N);
+            unsigned int idx = val - 1;
+            assume (!taken.arr[idx]);
+            taken.arr[idx]++;
+        }
+    }
+
+    // Not needed, but to avoid state space explosion
+    for (unsigned int i = 0; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        for (unsigned int j = 0; j < NUMBER_PROBABILITIES; j++) {
+            s.seq[i].probs.frac[j].num = 0;
+            s.seq[i].probs.frac[j].den = 1;
+        }
+    }
+
+    for (unsigned int i = 1; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        unsigned int checked = 0;
+        unsigned int last = i - 1;
+        for (unsigned int j = 0; j < N; j++) {
+            // Check lexicographic order
+            unsigned int a = s.seq[last].val[j];
+            unsigned int f = s.seq[i].val[j];
+            checked |= (a < f);
+            assume (checked || a == f);
+        }
+        assume (checked);
+    }
+    return s;
+}
+
 /**
  * Calculates the resulting permutation when we first apply firstPermutation to a sequence, and
  * subsequently we apply secondPermutation (secondPermutation ° firstPermutation).
@@ -397,7 +359,7 @@ unsigned int isBottom(struct fractions probs) {
     unsigned int bottom = 1;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
         unsigned int currProb = probs.frac[i].num;
-        bottom = (WEAK_SECURITY == 2 || i == NUMBER_PROBABILITIES - 1) ?
+        bottom = (WEAK_SECURITY == 2 || i == 3) ?
             (bottom && currProb) : (bottom || currProb);
     }
     return bottom;
@@ -444,61 +406,6 @@ unsigned int isValid(struct state s) {
         assume (seq.probs.frac[k].num);
     }
 
-    return res;
-}
-
-/**
- * Checks whether the state contains two columns that encode a valid result bit.
- */
-unsigned int isFinalState(struct state s) {
-    unsigned int res = 0;
-
-    if (isValid(s)) { // Non-valid states cannot be final.
-        res = 1;
-        /**
-         * Check nondeterministically whether there are two columns encoding the result bit
-         * (they need to have only two symbols, as otherwise we may be able to get information
-         * from the output basis of the result bit).
-         */
-        unsigned int a = nondet_uint(); // Index of the first card.
-        unsigned int b = nondet_uint(); // Index of the second card.
-
-        assume (a < N && b < N && a != b);
-        unsigned int lowerCard = 0;
-        unsigned int higherCard = 0;
-
-        unsigned int done = 0;
-        for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
-            if (!done && isStillPossible(s.seq[i].probs)) {
-                // IF XOR, SOMETHING LIKE THIS: 2 || 3
-                // CAUTION: ONLY FOR _AND_ FUNCTION!
-                unsigned int deciding = s.seq[i].probs.frac[NUMBER_PROBABILITIES - 1].num;
-                unsigned int first = s.seq[i].val[a];
-                unsigned int second = s.seq[i].val[b];
-                assume (first != second);
-                if (!higherCard && !lowerCard) {
-                    // In a 1-sequence, the first card is higher, otherwise the second one.
-                    higherCard = deciding ? first : second;
-                    lowerCard = deciding ? second : first;
-                } else {
-                    /**
-                     * Check whether for each 1-sequence, there is first the higher card AND
-                     * for each 0-sequence, there is first the lower card. Also check whether
-                     * there are only two cards used as output basis in this state.
-                     */
-                    if (   (deciding
-                            && !(   first == higherCard
-                                 && second == lowerCard))
-                        || (!deciding
-                            && !(   second == higherCard
-                                 && first == lowerCard))) {
-                        done = 1;
-                        res = 0;
-                    }
-                }
-            }
-        }
-    }
     return res;
 }
 
@@ -642,10 +549,10 @@ struct state doShuffle(struct state s,
 struct state applyShuffle(struct state s) {
     // Generate permutation set (shuffles are assumed to be uniformly distributed).
     unsigned int permSetSize = nondet_uint();
-    assume (0 < permSetSize && permSetSize <= MAX_PERM_SET_SIZE);
+    assume (MIN_PERM_SET_SIZE <= permSetSize && permSetSize <= MAX_PERM_SET_SIZE);
 
     unsigned int permutationSet[MAX_PERM_SET_SIZE][N] = { 0 };
-    unsigned int takenPermutations[NUMBER_POSSIBLE_SEQUENCES] = { 0 };
+    unsigned int takenPermutations[NUMBER_POSSIBLE_PERMUTATIONS] = { 0 };
     /**
      * Choose permSetSize permutations nondeterministically. To achieve this,
      * generate a nondeterministic permutation index and get the permutation from this index.
@@ -657,14 +564,14 @@ struct state applyShuffle(struct state s) {
             unsigned int permIndex = nondet_uint();
             // This ensures that the permutation sets are sorted lexicographically.
             assume (lastChosenPermutationIndex <= permIndex);
-            assume (permIndex < NUMBER_POSSIBLE_SEQUENCES);
+            assume (permIndex < NUMBER_POSSIBLE_PERMUTATIONS);
             assume (!takenPermutations[permIndex]);
 
             takenPermutations[permIndex] = 1;
             lastChosenPermutationIndex = permIndex;
 
             for (unsigned int j = 0; j < N; j++) {
-                permutationSet[i][j] = s.seq[permIndex].val[j] - 1;
+                permutationSet[i][j] = stateWithAllPermutations.seq[permIndex].val[j] - 1;
                 /**
                  * The '-1' is important. Later, we convert to array indices such as
                  * array[permutationSet[x][y]]. Without the '-1', we would get out-
@@ -682,155 +589,8 @@ struct state applyShuffle(struct state s) {
     // Apply the shuffle that was generated above.
     struct state res = doShuffle(s, permutationSet, permSetSize);
 
-    // Let's try to exploit symmetry: always X_00 on top
-    assume (0 < res.seq[0].probs.frac[0].num);
-
     assume (isBottomFree(res));
     return res;
-}
-
-struct turnStates alignAndAssignFractions(struct turnStates result,
-                                          struct fractions probs) {
-    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
-        if (result.isUsed[i]) {
-            unsigned int newDenominator = 1;
-            /**
-             * Align all fractions to the same denominator,
-             * such that the sum of all fractions is again == 1.
-             * This denominator is not yet stored in the arrays,
-             * since we might need the old denominators later-on to reduce the fractions!
-             */
-            for (unsigned int j = 0; j < NUMBER_PROBABILITIES; j++) {
-                for (unsigned int k = 0; k < NUMBER_PROBABILITIES; k++) {
-                    if (k != j) {
-                        probs.frac[j].num *= probs.frac[k].den;
-                    }
-                }
-                // Only accept states with equal possibilities.
-                assume (probs.frac[j].num == probs.frac[0].num);
-                newDenominator *= probs.frac[j].den;
-            }
-            // Update fractions in result state.
-            for (unsigned int j = 0; j < NUMBER_POSSIBLE_SEQUENCES; j++) {
-                for (unsigned int k = 0; k < NUMBER_PROBABILITIES; k++) {
-                    result.states[i].seq[j].probs.frac[k].num *= newDenominator;
-                    result.states[i].seq[j].probs.frac[k].den *= probs.frac[k].num;
-                }
-            }
-        }
-    }
-    return result;
-}
-
-struct fractions computeTurnProbabilities(struct turnStates result) {
-    struct fractions probs;
-    for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
-        probs.frac[i].num = 0;
-        // We later want to multiply all denominators with each other.
-        probs.frac[i].den = 1;
-    }
-    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
-        if (result.isUsed[i]) { // Only recalculate states that are used later.
-            struct state resultState = result.states[i];
-            // Add up all possibilities in a state.
-            for (unsigned int j = 0; j < NUMBER_POSSIBLE_SEQUENCES; j++) {
-                struct sequence resultSeq = resultState.seq[j];
-                if (isStillPossible(resultSeq.probs)) {
-                    for (unsigned int k = 0; k < NUMBER_PROBABILITIES; k++) {
-                        struct fraction prob = resultSeq.probs.frac[k];
-                        unsigned int num   = prob.num;
-                        unsigned int denom = prob.den;
-                        unsigned int newNum   = probs.frac[k].num;
-                        unsigned int newDenom = probs.frac[k].den;
-                        /**
-                         * If the sequence does not belong to an input sequence,
-                         * this sequence should not be updated in this step.
-                         */
-                        if (num && denom == newDenom) {
-                            probs.frac[k].num += num;
-                        } else if (num && denom != newDenom) {
-                            probs.frac[k].num = (newNum * denom) + (num * newDenom);
-                            probs.frac[k].den *= denom;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return probs;
-}
-
-/**
- * Given state and the position of a turned card,
- * this function returns all branched states resulting from the turn.
- */
-struct turnStates copyObservations(struct state s, unsigned int turnPosition) {
-    struct turnStates result;
-    // Initialise N empty states.
-    for (unsigned int i = 0; i < MAX_TURN_OBSERVATIONS; i++) {
-        result.states[i] = emptyState;
-        result.isUsed[i] = 0;
-    }
-    unsigned int cntTurnObservations = 0;
-    /**
-     * If a sequence belongs to an observation X, then copy this
-     * sequence into the state of observation X.
-     */
-    for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
-        struct sequence seq = s.seq[i];
-        if (isStillPossible(seq.probs)) {
-            unsigned int turnedCardNumber = seq.val[turnPosition];
-            unsigned int turnIdx = turnedCardNumber - 1;
-            cntTurnObservations += result.isUsed[turnIdx] ? 0 : 1;
-            result.isUsed[turnIdx] = 1;
-            assume (cntTurnObservations <= MAX_TURN_OBSERVATIONS);
-            for (unsigned int j = 0; j < NUMBER_PROBABILITIES; j++) {
-                struct fraction prob = seq.probs.frac[j];
-                // Copy numerator.
-                result.states[turnIdx].seq[i].probs.frac[j].num = prob.num;
-                if (!WEAK_SECURITY) { // Probabilistic security
-                    // Copy denominator.
-                    result.states[turnIdx].seq[i].probs.frac[j].den = prob.den;
-                }
-            }
-        }
-    }
-    assume (MIN_TURN_OBSERVATIONS <= cntTurnObservations);
-    return result;
-}
-
-/**
- * Turn at a nondeterministic position and return all resulting states. For each possible
- * observation, there is a distinct state. If an observation cannot occur through this
- * turn operation, the according isUsed entry is set to zero. For more information, refer
- * to the documentation of "turnStates".
- */
-struct turnStates applyTurn(struct state s) {
-    // Choose turn position nondeterministically, otherwise we cannot do two turns in a row.
-    unsigned int turnPosition = nondet_uint();
-    assume (turnPosition < N);
-
-    struct turnStates result = copyObservations(s, turnPosition);
-    if (WEAK_SECURITY) { // Weaker security check: output-possibilistic or input-possibilistic.
-        for (unsigned int stateNumber = 0; stateNumber < MAX_TURN_OBSERVATIONS; stateNumber++) {
-            if (result.isUsed[stateNumber]) {
-                struct state resultState = result.states[stateNumber];
-                // Now nondeterministic. We only need to find one sequence for
-                // every possible in-/output. We assume nondeterministically
-                // that the state contains a sequence for every in-/output possibility.
-                for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
-                    unsigned int seqIndex = nondet_uint();
-                    assume (seqIndex < NUMBER_POSSIBLE_SEQUENCES);
-                    assume (resultState.seq[seqIndex].probs.frac[i].num);
-                }
-            }
-        }
-    } else { // Probabilistic security.
-        struct fractions probs = computeTurnProbabilities(result);
-        result = alignAndAssignFractions(result, probs);
-    }
-
-    return result;
 }
 
 /**
@@ -850,50 +610,15 @@ unsigned int performActions(struct state s) {
     }
 
     for (unsigned int i = 0; i < L; i++) {
-        // Choose the action nondeterministically.
-        unsigned int action = nondet_uint();
-        assume (action < A);
-        // If A is greater than 2, we must add cases for additional actions below.
-        assume (A == 2);
         unsigned int next = i + 1;
 
-        if (action == TURN) {
-            /**
-             * Generate N states through a turn operation and store them in the
-             * reachableStates array. For every used state, we get another path
-             * in the protocol that must be processed.
-             */
-            struct turnStates possiblePostStates = applyTurn(reachableStates[i]);
-
-            unsigned int stateIdx = nondet_uint();
-            assume (stateIdx < MAX_TURN_OBSERVATIONS);
-            assume (possiblePostStates.isUsed[stateIdx]);
-            reachableStates[next] = possiblePostStates.states[stateIdx];
-            if (!FINITE_RUNTIME) { // Restart-free Las-Vegas.
-                if (isFinalState(reachableStates[next])) {
-                    assume (next == L);
-                    result = 1;
-                }
-            } else {
-                unsigned int isFinalTurn = 1;
-                for (unsigned int j = 0; j < MAX_TURN_OBSERVATIONS; j++) {
-                    if (    possiblePostStates.isUsed[j]
-                        && !isFinalState(possiblePostStates.states[j])) {
-                        isFinalTurn = 0;
-                    }
-                }
-                if (isFinalTurn) {
-                    assume (next == L);
-                    result = 1;
-                }
-            }
-        } else if (action == SHUFFLE) {
+        if (1) {
             /**
              * Apply a nondet shuffle and store the result in
              * the reachableStates array.
              */
             reachableStates[next] = applyShuffle(reachableStates[i]);
-            if (isFinalState(reachableStates[next])) {
+            if (isValid(reachableStates[next])) {
                 assume (next == L);
                 result = 1;
             }
@@ -905,102 +630,28 @@ unsigned int performActions(struct state s) {
     return result;
 }
 
-/**
- * Determine if a sequence in the start state belongs to the input possibility (0 0).
- */
-unsigned int isZeroZero(unsigned int arr[N]) {
-    return isZero(arr[0], arr[1]) && isZero(arr[2], arr[3]);
-}
-
-/**
- * Determine if a sequence in the start state belongs to the input possibility (0 1).
- */
-unsigned int isZeroOne(unsigned int arr[N]) {
-    return isZero(arr[0], arr[1]) && isOne(arr[2], arr[3]);
-}
-
-/**
- * Determine if a sequence in the start state belongs to the input possibility (1 0).
- */
-unsigned int isOneZero(unsigned int arr[N]) {
-    return isOne(arr[0], arr[1]) && isZero(arr[2], arr[3]);
-}
-
-/**
- * Determine if a sequence in the start state belongs to the input possibility (1 1).
- */
-unsigned int isOneOne(unsigned int arr[N]) {
-    return isOne(arr[0], arr[1]) && isOne(arr[2], arr[3]);
-}
-
-/**
- * Returns if the given sequnce is a input sequence in the start state.
- */
-unsigned int inputProbability(unsigned int start,
-                              unsigned int arr[N]) {
-    assume (start < NUMBER_START_SEQS);
-    unsigned int res = 0;
-    if (start == 0) {
-        res = isZeroZero(arr);
-    } else if (start == 1) {
-        res = isZeroOne(arr);
-    } else if (start == 2) {
-        res = isOneZero(arr);
-    } else if (start == 3) {
-        res = isOneOne(arr);
-    }
-    return res;
-}
-
 int main() {
 	// Initialise an empty state
     emptyState = getEmptyState();
-    struct state startState = emptyState;
+    struct state minimalState = emptyState;
 
-    // We generate the start sequences.
-    struct narray start[NUMBER_START_SEQS];
-    for (unsigned int i = 0; i < NUMBER_START_SEQS; i++) {
-        start[i] = getStartSequence();
-    }
-    assume (isZeroZero(start[0].arr));
+    // We generate two arbitrary but *distinct* sequences, by drawing two distinct indices
+    // here, everything is just output possibilistic
+    unsigned int sqIdx1 = nondet_uint();
+    unsigned int sqIdx2 = nondet_uint();
+    assume (sqIdx1 < sqIdx2);
+    assume (NUMBER_PROBABILITIES == 2);
+    minimalState.seq[sqIdx1].probs.frac[0].num = 1;
+    minimalState.seq[sqIdx1].probs.frac[1].num = 0;
+    minimalState.seq[sqIdx2].probs.frac[0].num = 0;
+    minimalState.seq[sqIdx2].probs.frac[1].num = 1;
 
-    assume (NUMBER_START_SEQS == 4);
-    assume (start[0].arr[0] == start[1].arr[0]);
-    assume (start[1].arr[0] != start[2].arr[0]);
-    assume (start[2].arr[0] == start[3].arr[0]);
-
-    assume (start[0].arr[2] == start[2].arr[2]);
-    assume (start[0].arr[2] != start[1].arr[2]);
-    assume (start[1].arr[2] == start[3].arr[2]);
-
-    unsigned int arrSeqIdx[NUMBER_START_SEQS];
-    for (unsigned int i = 0; i < NUMBER_START_SEQS; i++) {
-        arrSeqIdx[i] = getSequenceIndexFromArray(start[i], startState);
-    }
-
-    for (unsigned int i = 0; i < NUMBER_START_SEQS; i++) {
-        unsigned int idx = arrSeqIdx[i];
-        unsigned int inputPoss = 0;
-        unsigned int pos = 0;
-        if (WEAK_SECURITY != 2) { // We differentiate the output (i.e., NOT output possibilistic)
-            // Assign every sequence to their input possibility.
-            inputPoss = inputProbability(i, start[i].arr);
-            pos = i;
-        } else {
-            // Assign every sequence to their output result.
-            inputPoss = !isOneOne(start[i].arr);
-        }
-        startState.seq[idx].probs.frac[pos].num = inputPoss;
-    }
-
-    unsigned int lastStartSeq = NUMBER_START_SEQS - 1;
-    unsigned int arrIdx = arrSeqIdx[lastStartSeq];
-    unsigned int lastProbIdx = NUMBER_PROBABILITIES - 1;
-    startState.seq[arrIdx].probs.frac[lastProbIdx].num = isOneOne(start[lastStartSeq].arr);
+    // Store all possible Permutations
+    stateWithAllPermutations = getStateWithAllPermutations();
 
     // Do actions nondeterministically until a protocol is found.
-    unsigned int foundValidProtocol = performActions(startState);
-    assume (foundValidProtocol);
+    unsigned int foundValidState = performActions(minimalState);
+    assume (foundValidState);
 
 	// Fail the check iff a protocol is found, so we can read out the trace including the protocol.
     assert (0);

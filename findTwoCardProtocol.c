@@ -35,7 +35,7 @@ void __CPROVER_assert(int x, char y[]);
  * Amount of distinguishable card symbols.
  */
 #ifndef NUM_SYM
-#define NUM_SYM 4
+#define NUM_SYM 2
 #endif
 
 
@@ -141,14 +141,83 @@ void __CPROVER_assert(int x, char y[]);
 #endif
 
 /**
+ * Maximum number of permutations fpr the given number of cards (N!).
+ * This value has to be computed by our script, or adjusted manually.
+ */
+#ifndef NUMBER_POSSIBLE_PERMUTATIONS
+#define NUMBER_POSSIBLE_PERMUTATIONS 24
+#endif
+
+/**
  * This variable is used to limit the permutation set in any shuffle.
  * This can reduce the running time of this program.
  * When reducing this Variable, keep in mind that it could exclude some valid protocols,
  * as some valid permutation sets are not longer considered.
  */
 #ifndef MAX_PERM_SET_SIZE
-#define MAX_PERM_SET_SIZE NUMBER_POSSIBLE_SEQUENCES
+#define MAX_PERM_SET_SIZE NUMBER_POSSIBLE_PERMUTATIONS
 #endif
+
+#ifndef SUBGROUP_SIZE_1
+#define SUBGROUP_SIZE_1 1
+#endif
+
+#ifndef SUBGROUP_SIZE_2
+#define SUBGROUP_SIZE_2 2
+#endif
+
+#ifndef SUBGROUP_SIZE_3
+#define SUBGROUP_SIZE_3 3
+#endif
+
+#ifndef SUBGROUP_SIZE_4
+#define SUBGROUP_SIZE_4 4
+#endif
+
+#ifndef SUBGROUP_SIZE_5
+#define SUBGROUP_SIZE_5 5
+#endif
+
+#ifndef SUBGROUP_SIZE_6
+#define SUBGROUP_SIZE_6 6
+#endif
+
+#ifndef SUBGROUP_SIZE_7
+#define SUBGROUP_SIZE_7 8
+#endif
+
+#ifndef SUBGROUP_SIZE_8
+#define SUBGROUP_SIZE_8 10
+#endif
+
+#ifndef SUBGROUP_SIZE_9
+#define SUBGROUP_SIZE_9 12
+#endif
+
+#ifndef SUBGROUP_SIZE_10
+#define SUBGROUP_SIZE_10 20
+#endif
+
+#ifndef SUBGROUP_SIZE_11
+#define SUBGROUP_SIZE_11 24
+#endif
+
+#ifndef SUBGROUP_SIZE_12
+#define SUBGROUP_SIZE_12 60
+#endif
+
+#ifndef SUBGROUP_SIZE_13
+#define SUBGROUP_SIZE_13 120
+#endif
+
+#ifndef NUMBER_SUBGROUP_SIZES
+#define NUMBER_SUBGROUP_SIZES 13
+#endif
+
+const unsigned int subgroupSizes[13] =
+    { SUBGROUP_SIZE_1, SUBGROUP_SIZE_2, SUBGROUP_SIZE_3, SUBGROUP_SIZE_4, SUBGROUP_SIZE_5,
+      SUBGROUP_SIZE_6, SUBGROUP_SIZE_7, SUBGROUP_SIZE_8, SUBGROUP_SIZE_9, SUBGROUP_SIZE_10,
+      SUBGROUP_SIZE_11, SUBGROUP_SIZE_12, SUBGROUP_SIZE_13 };
 
 /**
  * After a turn, the protocol tree splits up in one subtree for each possible observation.
@@ -231,6 +300,13 @@ struct state {
 };
 
 /**
+ * All permutations are remembered here, as seen from left to right, sorted alphabetically.
+ */
+struct permutationState {
+    struct sequence seq[NUMBER_POSSIBLE_PERMUTATIONS];
+};
+
+/**
  * We use this struct to return arrays of states after turn operations.
  * There is one state for each possible observation.
  * In each turn, each sequence with an observable card #X is stored in
@@ -280,6 +356,11 @@ unsigned int isOne(unsigned int a, unsigned int b) {
  */
 struct state getEmptyState() {
     struct state s;
+    struct numsymarray symbolCount;
+    for (unsigned int i = 0; i < NUM_SYM; i++) {
+        symbolCount.arr[i] = 0;
+    }
+
     for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
         struct numsymarray taken;
         for (unsigned int j = 0; j < NUM_SYM; j++) {
@@ -288,10 +369,17 @@ struct state getEmptyState() {
         for (unsigned int j = 0; j < N; j++) {
             s.seq[i].val[j] = nondet_uint();
             unsigned int val = s.seq[i].val[j];
-            assume (0 < val && val <= COMMIT && val <= NUM_SYM);
+            assume (0 < val  && val <= NUM_SYM);
             unsigned int idx = val - 1;
-            assume (taken.arr[idx] < COMMIT / NUM_SYM);
             taken.arr[idx]++;
+            assume (taken.arr[idx] <= N-2); // At least two symbols have to be different. Players cannot commit otherwise.
+        }
+        for (unsigned int  j = 0; j < NUM_SYM; j++) {
+            if(i == 0) {
+                symbolCount.arr[j] = taken.arr[j];
+            } else { // We ensure that every sequence consists of the same symbols
+                assume(taken.arr[j] == symbolCount.arr[j]);
+            }
         }
 
         // Here we store the numerators and denominators
@@ -322,6 +410,11 @@ struct state getEmptyState() {
 struct state emptyState;
 
 /**
+ * We store all possible permutations into a seperate state to save resources.
+ */
+struct permutationState stateWithAllPermutations;
+
+/**
  * This method constructs the start sequence for a given commitment length COMMIT
  * using nodeterministic assignments. We only consider the case where Alice uses
  * the cards "1" and "2", and Bob uses the cards "3" and "4".
@@ -340,12 +433,14 @@ struct narray getStartSequence() {
         unsigned int idx = val - 1;
         assume (taken.arr[idx] < COMMIT / NUM_SYM);
         taken.arr[idx]++;
-        // Here we assume that we first have 1 or 2 and only afterwards 3 or 4
-        assume ((i != 0 && i != 1) || val == 1 || val == 2);
-        assume ((i != 2 && i != 3) || val == 3 || val == 4);
     }
+    // Here we assume that each player only uses fully distinguishable cards
+    assume (res.arr[1] != res.arr[0]);
+    assume (res.arr[3] != res.arr[2]);
     for (unsigned int i = COMMIT; i < N; i++) {
-        res.arr[i] = i + 1;
+        res.arr[i] = nondet_uint();
+        assume (0 < res.arr[i]);
+        assume (res.arr[i] <= NUM_SYM);
     }
     return res;
 }
@@ -377,6 +472,46 @@ unsigned int getSequenceIndexFromArray(struct narray compare, struct state compa
     return seqIdx;
 }
 
+struct permutationState getStateWithAllPermutations() {
+ struct permutationState s;
+    for (unsigned int i = 0; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        struct narray taken;
+        for (unsigned int j = 0; j < N; j++) {
+            taken.arr[j] = 0;
+        }
+        for (unsigned int j = 0; j < N; j++) {
+            s.seq[i].val[j] = nondet_uint();
+            unsigned int val = s.seq[i].val[j];
+            assume (0 < val && val <= N);
+            unsigned int idx = val - 1;
+            assume (!taken.arr[idx]);
+            taken.arr[idx]++;
+        }
+    }
+
+    // Not needed, but to avoid state space explosion
+    for (unsigned int i = 0; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        for (unsigned int j = 0; j < NUMBER_PROBABILITIES; j++) {
+            s.seq[i].probs.frac[j].num = 0;
+            s.seq[i].probs.frac[j].den = 1;
+        }
+    }
+
+    for (unsigned int i = 1; i < NUMBER_POSSIBLE_PERMUTATIONS; i++) {
+        unsigned int checked = 0;
+        unsigned int last = i - 1;
+        for (unsigned int j = 0; j < N; j++) {
+            // Check lexicographic order
+            unsigned int a = s.seq[last].val[j];
+            unsigned int f = s.seq[i].val[j];
+            checked |= (a < f);
+            assume (checked || a == f);
+        }
+        assume (checked);
+    }
+    return s;
+}
+
 /**
  * Calculates the resulting permutation when we first apply firstPermutation to a sequence, and
  * subsequently we apply secondPermutation (secondPermutation ° firstPermutation).
@@ -394,11 +529,12 @@ struct narray combinePermutations(struct narray firstPermutation,
  * Check if the sequence is a bottom sequence (belongs to more than one possible output).
  */
 unsigned int isBottom(struct fractions probs) {
-    unsigned int bottom = 1;
-    for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
-        unsigned int currProb = probs.frac[i].num;
-        bottom = (WEAK_SECURITY == 2 || i == NUMBER_PROBABILITIES - 1) ?
-            (bottom && currProb) : (bottom || currProb);
+    unsigned int bottom = 0;
+
+    if (WEAK_SECURITY == 2) {
+        bottom = probs.frac[0].num && probs.frac[1].num;
+    } else {
+        bottom = (probs.frac[0].num || probs.frac[1].num || probs.frac[2].num) && probs.frac[3].num;
     }
     return bottom;
 }
@@ -471,7 +607,6 @@ unsigned int isFinalState(struct state s) {
         for (unsigned int i = 0; i < NUMBER_POSSIBLE_SEQUENCES; i++) {
             if (!done && isStillPossible(s.seq[i].probs)) {
                 // IF XOR, SOMETHING LIKE THIS: 2 || 3
-                // CAUTION: ONLY FOR _AND_ FUNCTION!
                 unsigned int deciding = s.seq[i].probs.frac[NUMBER_PROBABILITIES - 1].num;
                 unsigned int first = s.seq[i].val[a];
                 unsigned int second = s.seq[i].val[b];
@@ -543,6 +678,13 @@ void checkTransitivityOfPermutation(unsigned int permutationSet[MAX_PERM_SET_SIZ
     }
 
     if (!onlyPerm) {
+        unsigned int permittedSoubgroupSize = 0;
+        for (unsigned int i = 0; i < NUMBER_SUBGROUP_SIZES; i++) {
+            permittedSoubgroupSize |= (permSetSize == subgroupSizes[i]);
+        }
+        assume ((5 < N) || permittedSoubgroupSize);
+
+        // hier hin der check, ob permSetSize eine Größe aus der obigen Liste hat
         for (unsigned int i = 0; i < MAX_PERM_SET_SIZE; i++) {
             if (i < permSetSize) {
                 for (unsigned int j = 0; j < MAX_PERM_SET_SIZE; j++) {
@@ -645,7 +787,7 @@ struct state applyShuffle(struct state s) {
     assume (0 < permSetSize && permSetSize <= MAX_PERM_SET_SIZE);
 
     unsigned int permutationSet[MAX_PERM_SET_SIZE][N] = { 0 };
-    unsigned int takenPermutations[NUMBER_POSSIBLE_SEQUENCES] = { 0 };
+    unsigned int takenPermutations[NUMBER_POSSIBLE_PERMUTATIONS] = { 0 };
     /**
      * Choose permSetSize permutations nondeterministically. To achieve this,
      * generate a nondeterministic permutation index and get the permutation from this index.
@@ -657,14 +799,14 @@ struct state applyShuffle(struct state s) {
             unsigned int permIndex = nondet_uint();
             // This ensures that the permutation sets are sorted lexicographically.
             assume (lastChosenPermutationIndex <= permIndex);
-            assume (permIndex < NUMBER_POSSIBLE_SEQUENCES);
+            assume (permIndex < NUMBER_POSSIBLE_PERMUTATIONS);
             assume (!takenPermutations[permIndex]);
 
             takenPermutations[permIndex] = 1;
             lastChosenPermutationIndex = permIndex;
 
             for (unsigned int j = 0; j < N; j++) {
-                permutationSet[i][j] = s.seq[permIndex].val[j] - 1;
+                permutationSet[i][j] = stateWithAllPermutations.seq[permIndex].val[j] - 1;
                 /**
                  * The '-1' is important. Later, we convert to array indices such as
                  * array[permutationSet[x][y]]. Without the '-1', we would get out-
@@ -681,9 +823,6 @@ struct state applyShuffle(struct state s) {
     }
     // Apply the shuffle that was generated above.
     struct state res = doShuffle(s, permutationSet, permSetSize);
-
-    // Let's try to exploit symmetry: always X_00 on top
-    assume (0 < res.seq[0].probs.frac[0].num);
 
     assume (isBottomFree(res));
     return res;
@@ -997,6 +1136,9 @@ int main() {
     unsigned int arrIdx = arrSeqIdx[lastStartSeq];
     unsigned int lastProbIdx = NUMBER_PROBABILITIES - 1;
     startState.seq[arrIdx].probs.frac[lastProbIdx].num = isOneOne(start[lastStartSeq].arr);
+
+    // Store all possible Permutations
+    stateWithAllPermutations = getStateWithAllPermutations();
 
     // Do actions nondeterministically until a protocol is found.
     unsigned int foundValidProtocol = performActions(startState);
