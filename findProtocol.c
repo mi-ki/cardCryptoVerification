@@ -397,7 +397,7 @@ unsigned int isBottom(struct fractions probs) {
     unsigned int bottom = 1;
     for (unsigned int i = 0; i < NUMBER_PROBABILITIES; i++) {
         unsigned int currProb = probs.frac[i].num;
-        bottom = (WEAK_SECURITY == 2 || i == 3) ?
+        bottom = (WEAK_SECURITY == 2 || i == NUMBER_PROBABILITIES - 1) ?
             (bottom && currProb) : (bottom || currProb);
     }
     return bottom;
