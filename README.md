@@ -13,8 +13,8 @@ Assuming you choose the number **_l_** for protocol length and **_n_** for the n
 ./run.sh n l
 ```
 
-For the latter two scripts, you must specify the number of used cards and the size of the permutation set for which you want to check maximality.
-Assuming you choose the number **_n_** for the number of cards and **_s_** for the permutation set size, you would type the following in your shell (replace **runDetMaxPermSetSize** by **runDetTwoColorMaxPermSetSize** if you want to verify permutation set size maximality for two-color decks instead of standard decks):
+For the latter two scripts, you must specify the number of used cards and the size of the permutation set for which you want to check the feasibility of a shuffle.
+Assuming you choose the number **_n_** for the number of cards and **_s_** for the permutation set size, you would type the following in your shell (replace **runDetMaxPermSetSize** by **runDetTwoColorMaxPermSetSize** if you want to verify whether the given permutation set size suffices for two-color decks instead of standard decks):
 
 ```
 ./runDetMaxPermSetSize.sh n s
