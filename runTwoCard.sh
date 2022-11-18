@@ -129,7 +129,7 @@ NOM='0'
 DENOM='1'
 VAL=$[$N / $NUM_SYM]
 fact $VAL
-FOO=$?
+FOO=$factorial
 BOUND=$[$NUM_SYM - 1]
 
 for i in $(eval echo "{1..$BOUND}")
@@ -140,11 +140,11 @@ done
 
 REST=$[$N - $NOM]
 fact $REST
-FOO=$?
+FOO=$factorial
 DENOM=$[$DENOM * $FOO]
 
 fact $N
-FOO=$?
+FOO=$factorial
 
 POS_SEQ=$[$FOO / $DENOM]
 POS_SEQ_STRING="NUMBER_POSSIBLE_SEQUENCES"
