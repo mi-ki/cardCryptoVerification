@@ -190,7 +190,7 @@ fi
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
-echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
+echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
 timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPT 2>&1 | tee -a $OUTFILE
