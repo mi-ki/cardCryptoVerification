@@ -24,6 +24,7 @@ FILE="findTwoCardProtocol.c"
 HOST=`echo -e $(hostname)`
 OUTFILE="twoCardProtocol_"$HOST"_"$START_PRINT".out"
 TRACE_OPTS='--compact-trace --trace-hex'
+INSTR_OPTS='--no-standard-checks'
 TIMEOUT="5d"
 N=$1
 LENGTH=$2
@@ -188,12 +189,15 @@ else
     NUMBER_SUBGROUP_SIZES='0'
 fi
 
+COMMAND="$CBMC $TRACE_OPTS $INSTR_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
+
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
 echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
+echo -e "# Command: $COMMAND" | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS 2>&1 | tee -a $OUTFILE
+timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END
