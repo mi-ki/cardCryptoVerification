@@ -15,6 +15,11 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, <http://www.gnu.org/licenses/>.
 
+
+export LC_NUMERIC=C
+export LC_ALL=C
+
+
 START=$(date +'%Y-%m-%d %H:%M:%S %Z')
 START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
 START_SEC=$(date +%s)
@@ -22,13 +27,15 @@ TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
 FILE="findTwoCardProtocol.c"
 HOST=`echo -e $(hostname)`
-OUTFILE="twoCardProtocol_"$HOST"_"$START_PRINT".out"
+FILENAME="twoCardProtocol_$HOST_$START_PRINT"
+OUTFILE="$FILENAME.out"
 TRACE_OPTS='--compact-trace --trace-hex'
 INSTR_OPTS='--no-standard-checks'
+UI_OPTS='--json-ui'
 TIMEOUT="5d"
 N=$1
 LENGTH=$2
-OPT=$3
+OPT=$
 NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 
 OPTS=''
@@ -189,7 +196,7 @@ else
     NUMBER_SUBGROUP_SIZES='0'
 fi
 
-COMMAND="$CBMC $TRACE_OPTS $INSTR_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
+COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS $INSTR_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
@@ -197,7 +204,47 @@ echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUT
 echo -e "# Command: $COMMAND" | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE
+
+timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE & 
+TIMEOUT_PID=`jobs -p`
+CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
+
+
+#timeout "$TIMEOUT" time -q -f 'CBMC runtime: %e seconds' $COMMAND 2>&1 | tee -a "$OUTFILE" &
+#TIMEOUT_PID=$(jobs -p)
+#
+#TIME_PID=$(ps -o pid= --ppid "$TIMEOUT_PID" | awk 'NR == 1 {print $1}')
+#CBMC_PID=$(ps -o pid= --ppid "$TIME_PID" | awk 'NR == 1 {print $1}')
+
+
+# Memory logging 
+#CPU_VALS=()  #TODO ggf löschen?
+MEM_VALS=()
+PLT_VALS=()
+COMMAND=''
+CPU_VAL=0
+MEM_VAL=0
+SEC=''
+
+while kill -0 "$CBMC_PID" 2>/dev/null; do
+    if [ -n "$CBMC_PID" ]; then
+        {  
+            read -r COMMAND CPU_VAL MEM_VAL SEC < <(
+                top -b -n 1 -p "$CBMC_PID" | sed -n '8,12p' | awk '{print $12, $9, $10, $11}'
+            )
+
+            ELAPSED_SECONDS=$(awk -F '[:.]' '{print $1 * 60 + $2}' <<< "$SEC")
+
+            printf "\n[%s] %s - %%CPU: %s  %%MEM: %s\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$COMMAND" "$CPU_VAL" "$MEM_VAL"
+            #CPU_VALS+=("$CPU_VAL")
+            MEM_VALS+=("$MEM_VAL")
+            PLT_VALS+=("$ELAPSED_SECONDS $MEM_VAL")
+        } 
+    fi
+    sleep 5
+done
+
+
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END
@@ -206,3 +253,51 @@ echo -e '\n'"############################################################" 2>&1 
 echo -e $FINAL_TIMESTAMP 2>&1 | tee -a $OUTFILE
 echo -e "# It took $DIFF seconds." 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
+
+
+# Compute statistics
+MIN_MEM=999999
+MAX_MEM=0
+AVG_MEM=0
+MEM_SUM=0
+
+for VAL in "${MEM_VALS[@]}" 
+do
+    MEM_SUM=$(awk -v val=$VAL -v sum=$MEM_SUM 'BEGIN { printf "%.6f", sum + val }')
+
+    if (( $(echo $VAL $MAX_MEM | awk '{if ($1 > $2) print 1;}') )); then
+        MAX_MEM="$VAL"
+    fi
+    if (( $(echo $VAL $MIN_MEM | awk '{if ($1 < $2) print 1;}') )); then
+        MIN_MEM="$VAL"
+    fi
+done
+
+VALS_COUNT="${#MEM_VALS[@]}"
+if [ $VALS_COUNT -eq 0 ]; then
+    #TODO
+    echo "ERROR" 
+else
+    AVG_MEM=$(awk -v count=$VALS_COUNT -v sum=$MEM_SUM 'BEGIN { printf "%.2f", sum / count }')
+fi
+
+# Generate plot
+{
+    printf "set terminal svg\n"
+    printf "set output '%s_plot.svg'\n" "$FILENAME"
+    printf "set tics\n"
+    printf "set xlabel 'Time (Seconds)'\n"
+    printf "set ylabel 'Memory usage (%%)'\n"
+    #printf "plot '-' using 1:2:xtic(1) with lines title 'Memory'\n"
+    printf "plot '-' using 1:2 with linespoints title 'Memory'\n"
+    printf '%s\n' "${PLT_VALS[@]}"
+    printf "e\n"
+} | gnuplot
+
+
+# Write statiscs to file
+printf "Min. memory usage: %s\nMax. memory usage: %s\nAvg. memory usage: %s\n\n" "$MIN_MEM" "$MAX_MEM" "$AVG_MEM" > ""$FILENAME"_stats.txt"
+
+printf "sec %%mem\n" >> ""$FILENAME"_stats.txt"
+printf "%s\n" "${PLT_VALS[@]}" >> ""$FILENAME"_stats.txt"
+
