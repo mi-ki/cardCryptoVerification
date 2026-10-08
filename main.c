@@ -1099,12 +1099,19 @@ int main(int argc, char* argv[]) {
    numSym = atoi(argv[4]);
    numberPossiblePermutations = atoi(argv[5]);
    numberPossibleSequences = atoi(argv[6]);
-   numberProbabilities = atoi(argv[7]);
+   int weak_security = atoi(argv[7]);
+   if (weak_security == 2){
+      numberProbabilities = 2;
+   } else {
+      numberProbabilities = 4;
+   }
 
    if(!(n && l && numSym && numberPossiblePermutations && numberPossibleSequences && numberProbabilities)){
       printf("Error: arguments must be valid numbers.\n");
       return EXIT_FAILURE;
    }
+
+
 
    // The number of states (or actions) should not be larger than the protocol length times the number of symbols
    maxGraphSize = l*numSym;

@@ -21,10 +21,11 @@ export LC_ALL=C
 
 VERBOSE=0
 CLOSED=0
-FINITE_RUNTIME=""
+FINITE_RUNTIME=0
+WEAK_SECURITY=0
+FORCE_RANDOM_CUTS=0
+RAW=0
 MAX_PERM_SET_SIZE=""
-WEAK_SECURITY=""
-RAW=""
 N=""
 LENGTH=""
 
@@ -36,44 +37,36 @@ while [[ $# -gt 0 ]]; do
         printf 'No valid card number specified. Now terminating\n' "$1" >&2
         exit 2
       }
-      N=$2 
-      shift 2
-      ;;
+      N=$2; shift 2 ;;
     -l)
       (($# >= 2)) || {
         printf 'No valid protocol length specified. Now terminating.\n' "$1" >&2
         exit 2
       }
-      LENGTH=$2
-      shift 2
-      ;;
+      LENGTH=$2; shift 2 ;;
     -v|--verbose) VERBOSE=1; shift ;;
     -r|--raw) RAW=1; shift ;;
-    -c|--closed) CLOSED=1; shift ;;
+    --closed) CLOSED=1; shift ;;
+    --force_random_cuts) FORCE_RANDOM_CUTS=1; shift ;;
     --max_perm_set_size)
       (($# >= 2)) || {
         printf 'Missing value for %s\n' "$1" >&2
         exit 2
       }
-      MAX_PERM_SET_SIZE=$2
-      shift 2
-      ;;
-    --weak_security)
-      (($# >= 2)) || {
-        printf 'Missing value for %s\n' "$1" >&2
-        exit 2
+      MAX_PERM_SET_SIZE=$2; shift 2 ;;
+    --input_security) 
+      (($WEAK_SECURITY == 0)) || {
+         printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
+         exit 2
       }
-      WEAK_SECURITY=$2
-      shift 2
-      ;;
-    --finite_runtime)
-      (($# >= 2)) || {
-        printf 'Missing value for %s\n' "$1" >&2
-        exit 2
+      WEAK_SECURITY=1; shift ;;
+    --output_security) 
+      (($WEAK_SECURITY == 0)) || {
+         printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
+         exit 2
       }
-      FINITE_RUNTIME=$2
-      shift 2
-      ;;
+      WEAK_SECURITY=2; shift ;;
+    --finite_runtime) FINITE_RUNTIME=1; shift ;;
     -h|--help)    echo "Usage: $0 -n TODO ... [-r|--raw] ... TODO "; exit 0 ;;
     --) shift; break ;;
     -*) echo "Unknown option: $1. Now terminating." >&2; exit 2 ;;
@@ -160,12 +153,20 @@ VERSION="# CBMC Version: "$($CBMC -version)
 OPTS=""
 OPTIONS=""
 
-if [ "$WEAK_SECURITY" != "" ]; then
-  #TODO check if value is 0, 1 or 2 (if WEAK_SECURITY stays as a parameter?)
-  OPTS="$OPTS -D WEAK_SECURITY=$WEAK_SECURITY"
-  OPTIONS="$OPTIONS WEAK_SECURITY = $WEAK_SECURITY"
+OPTS="$OPTS -D FORCE_RANDOM_CUTS=$FORCE_RANDOM_CUTS -D WEAK_SECURITY=$WEAK_SECURITY -D CLOSED_PROTOCOL=$CLOSED"
+OPTIONS="$OPTIONS FORCE_RANDOM_CUTS = $FORCE_RANDOM_CUTS, WEAK_SECURITY = $WEAK_SECURITY, CLOSED_PROTOCOL = $CLOSED"
 
-fi
+# TODO: is check or just pass value?
+# check if 
+#if [ "$WEAK_SECURITY" != "" ]; then
+#  OPTS="$OPTS -D WEAK_SECURITY=$WEAK_SECURITY"
+#  OPTIONS="$OPTIONS, WEAK_SECURITY = $WEAK_SECURITY"
+#fi
+#if [[ "$CLOSED" -eq 1 ]]; then
+#  OPTS="$OPTS -D CLOSED_PROTOCOL=$CLOSED"
+#  OPTIONS="$OPTIONS, CLOSED_PROTOCOL = $CLOSED"
+#fi
+
 
 if [ "$MAX_PERM_SET_SIZE" != "" ]; then
   OPTS="$OPTS -D MAX_PERM_SET_SIZE=$MAX_PERM_SET_SIZE"
@@ -173,24 +174,15 @@ if [ "$MAX_PERM_SET_SIZE" != "" ]; then
 
 fi
 
-if [[ "$CLOSED" -eq 1 ]]; then
-  OPTS="$OPTS -D CLOSED_PROTOCOL=$CLOSED"
-  OPTIONS="$OPTIONS, CLOSED_PROTOCOL = $CLOSED"
-fi
-
-
 UI_OPTS=''
-if [[ "$RAW" == "" ]]; then
+if (( "$RAW" == 0 )); then
     UI_OPTS='--json-ui'
 fi
-
-#TODO: other options? (finite runtime etc.)
 
 if [ "$OPTIONS" != "" ]
 then
     OPTIONS='\n'"# Further Options: "$OPTIONS
 fi
-
 
 fact ()
 {
@@ -285,14 +277,12 @@ echo -e '\n'"############################################################"'\n' 2
 if [[ "$RAW" -eq 0 ]]; then
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null & 
     TIMEOUT_PID=`jobs -p`
-    CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
 else 
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE  & 
     TIMEOUT_PID=`jobs -p`
-    CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
 fi
 
-PIPELINE_PID=$!
+    CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
 
 
 #timeout "$TIMEOUT" time -q -f 'CBMC runtime: %e seconds' $COMMAND 2>&1 | tee -a "$OUTFILE" &
@@ -331,7 +321,7 @@ if [[ "$VERBOSE" -eq 1 ]]; then
     done
 fi
 
-wait $PIPELINE_PID
+wait $TIMEOUT_PID
 
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
@@ -398,15 +388,4 @@ if [[ "$RAW" -eq 0 ]]; then
   ./Parser "$OUTFILE" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY"
   
 fi
-
-#- Modi implememtieren
-#    - roher output: ohne json (d.h. wie ursprünglich) -> stdout + file
-#    - mit json: trace nicht in stdout (falls möglich)
-#    - verbose modus: logs in stdout (nicht in file!)
-#        + immer zwischendurch [uhrzeit] prozess - cpu, memory usage 
-#        + extra file: plot
-#        + min, max, avg zusätzlich in file
-#    - --verbose
-#    - --raw
-#    - ansonsten json (default)
 
