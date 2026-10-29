@@ -76,6 +76,9 @@ int permSetCounter = 0;
 int permSetSize = 0;
 int maxPermSetSize = 0;
 
+// TODO fragen ob das besser als bisheriger Ansatz bei shuffle sein könnte
+int permIndex = -1;
+
 // Index of current state in reachableStates
 int next = 0;
 
@@ -449,6 +452,62 @@ void printState(struct State *state){
    }
 }
 
+
+int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
+   setParsingStep(PARSE_PERMSETVALUE);
+   if (currentAction != SHUFFLE){
+      printf("Error in trace (parsePermutationSetValue): current action should be shuffle (%i), but is %i\n", SHUFFLE, currentAction);
+      return CRITICAL_TRACE_ERROR;
+   }
+   int data = parseData(valueObject);
+   if(data < 0){
+      printf("Error parsing permutation Set (parsePermutationSetValue): data not valid  \n");
+      return data;
+   }
+
+   if(permutationSetPreAssign){
+      /** 
+       * Because permutationSet is initialized with zeros first, we need to skip all assignments that belong to the initialization.
+       * The value of permIndex is assigned after the initialization and before the assignments to permutationSet that we need to parse, 
+       * so it can be used as an indicator. A non-negative value 
+      */
+      if (permIndex >= 0){
+         permutationSetPreAssign = false;
+
+         int *newPermutationSet = malloc(sizeof(int)*permSetSize*n);
+         if(!newPermutationSet){
+            handleInternalError(BAD_MALLOC);
+         } 
+
+         newPermutationSet[x*n+y] = data;
+
+         struct Action *newAction = malloc(sizeof(struct Action));
+         struct Shuffle *shuffle = malloc(sizeof(struct Shuffle)); 
+         if (!newAction || !shuffle){
+            handleInternalError(BAD_MALLOC);
+         }
+
+         *shuffle = (struct Shuffle){stateFrom, currentStateIndex+1, permSetSize, newPermutationSet};
+         *newAction = (struct Action){.actiontype = SHUFFLE, .shuffle = shuffle};
+         actions[currentStateIndex] = newAction;
+      }
+
+   // Store the data
+   } else {
+      // TODO: permutation is stored like in code, not in paper -> fix this?
+      actions[currentStateIndex]->shuffle->permutationSet[x*n+y] = data;
+
+      // On the last value, set permutationSetPreAssign to true, because the next occurence of permutationSet in the trace will be before the assignment again
+      if (x == (permSetSize-1) && y == (n-1)){
+         permutationSetPreAssign = true;
+         currentAction = -1; // reset currentAction
+         permIndex = -1;
+      }
+   }
+   return NO_ERROR;
+}
+
+
 // TODO: errorhandling -> addErrorMessage
 // Parses value in permutationSet[X][Y]
 int parsePermutationSetValue(cJSON *valueObject, int x, int y){
@@ -506,6 +565,7 @@ int parsePermutationSetValue(cJSON *valueObject, int x, int y){
          currentAction = -1; // reset currentAction
       }
    }
+   permIndex = -1;
    return NO_ERROR;
 }
 
@@ -791,7 +851,6 @@ int parseState(cJSON *valueObject){
 // Parses possible states after a turn
 int parsePossiblePostStates(cJSON *valueObject){
    currentParsingStep = PARSE_PPS;
-   printf("parsePossiblePostStates! -> Turn\n");
    if(currentAction != TURN){
       printf("Error in trace (parsePossiblePostStates): current action should be turn (%i), but is %i\n", TURN, currentAction);
       return TRACE_ERROR;
@@ -995,6 +1054,20 @@ int parseObject(cJSON *traceItem){
    // Parse the size of the current permutationSet
    }  else if (strcmp(lhs, "permSetSize") == 0) {
       errorcode = parsePermSetSize(value, location);
+
+   // TODO: weglöschen falls nicht gebraucht!!! Siehe Frage
+   } else if (strcmp(lhs, "permIndex") == 0){
+        // Before applyShuffle is called, permIndex is (re)set to -1
+      if (permIndex == -2){
+         // When permIndex is -2 (i.e. it has been assigned to 0 previously), we need to parse the value in the current assignment)
+         permIndex = parseData(value);
+      } else {
+         // If the value of permIndex is positive (i.e. it has been parsed in the previous step) or -1 (i.e. it has been (re)set after a shuffle), 
+         // we need to ignore the value. This is necessary because permIndex is always assigned to 0 and then to another non negative value.
+         permIndex = -2;
+         // TODO: vlt trotzdem parsen und schauen, ob der Wert 0 ist?
+         // TODO: kommentar überdenken
+      }    
 
    // Parse states from reachableStates[X].seq
    } else {
