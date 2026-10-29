@@ -74,6 +74,7 @@ int numSym = 0;
 int permutationSetPreAssign = true;
 int permSetCounter = 0;
 int permSetSize = 0;
+int maxPermSetSize = 0;
 
 // Index of current state in reachableStates
 int next = 0;
@@ -452,7 +453,6 @@ void printState(struct State *state){
 // Parses value in permutationSet[X][Y]
 int parsePermutationSetValue(cJSON *valueObject, int x, int y){
    setParsingStep(PARSE_PERMSETVALUE);
-
    if (currentAction != SHUFFLE){
       printf("Error in trace (parsePermutationSetValue): current action should be shuffle (%i), but is %i\n", SHUFFLE, currentAction);
       return CRITICAL_TRACE_ERROR;
@@ -469,7 +469,8 @@ int parsePermutationSetValue(cJSON *valueObject, int x, int y){
     * On the first value in permutationSet after the assignment, the data structure for the permutationSet is created 
    */
    if(permutationSetPreAssign){
-      if (permSetCounter < (numberPossiblePermutations*n)){
+      if (permSetCounter < (maxPermSetSize*n)){
+         //printf("0  parsePermutationSetValue -> shuffle!\n");
          permSetCounter++;
       } else {
          permutationSetPreAssign = false;
@@ -790,6 +791,7 @@ int parseState(cJSON *valueObject){
 // Parses possible states after a turn
 int parsePossiblePostStates(cJSON *valueObject){
    currentParsingStep = PARSE_PPS;
+   printf("parsePossiblePostStates! -> Turn\n");
    if(currentAction != TURN){
       printf("Error in trace (parsePossiblePostStates): current action should be turn (%i), but is %i\n", TURN, currentAction);
       return TRACE_ERROR;
@@ -1086,8 +1088,8 @@ void printStatesAndActions(){
 // ./Parser twoCardProtocol_2026_10_07_15_29_41_CEST.out 4 4 2 24 6 2
 // ./Parser filename l n numSym numberPossiblePermutations numberPossibleSequences numberProbabilities
 int main(int argc, char* argv[]) {
-   if(argc != 8){
-      perror("Error: missing arguments!\n");
+   if(argc != 9){
+      perror("Error: invalid number of arguments!\n");
 
       return EXIT_FAILURE;
    }
@@ -1105,8 +1107,10 @@ int main(int argc, char* argv[]) {
    } else {
       numberProbabilities = 4;
    }
+   maxPermSetSize = atoi(argv[8]);
 
-   if(!(n && l && numSym && numberPossiblePermutations && numberPossibleSequences && numberProbabilities)){
+
+   if(!(n && l && numSym && numberPossiblePermutations && numberPossibleSequences && numberProbabilities && maxPermSetSize)){
       printf("Error: arguments must be valid numbers.\n");
       return EXIT_FAILURE;
    }
@@ -1288,7 +1292,7 @@ int main(int argc, char* argv[]) {
 
 
    // TODO: think about missing meta info? timeout, timestamp, etc?
-   printf("Version: %s\nN = %i, L = %i\nNUM_SYM = %i\nNUMBER_POSSIBLE_PERMUTATIONS = %i\nNUMBER_POSSIBLE_SEQUENCES = %i\nNUMBER_PROBABILITIES = %i\n\n", version->valuestring, n, l, numSym, numberPossiblePermutations, numberPossibleSequences, numberProbabilities);
+   printf("Version: %s\nN = %i, L = %i\nNUM_SYM = %i\nNUMBER_POSSIBLE_PERMUTATIONS = %i\nMAX_PERM_SET_SIZE = %i\nNUMBER_POSSIBLE_SEQUENCES = %i\nNUMBER_PROBABILITIES = %i\n\n", version->valuestring, n, l, numSym, numberPossiblePermutations, maxPermSetSize, numberPossibleSequences, numberProbabilities);
 
    printStatesAndActions();
 

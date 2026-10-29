@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-
+#TODO ganz an den Anfang schieben
 START=$(date +'%Y-%m-%d %H:%M:%S %Z')
 START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
 START_SEC=$(date +%s)
@@ -385,7 +385,8 @@ fi
 
 if [[ "$RAW" -eq 0 ]]; then
   #TODO check if trace exists?
-  ./Parser "$OUTFILE" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY"
-  
+  if [ "$MAX_PERM_SET_SIZE" == "" ]; then
+    MAX_PERM_SET_SIZE="$POS_PERM"
+  fi
+  ./Parser "$OUTFILE" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY" "$MAX_PERM_SET_SIZE"
 fi
-

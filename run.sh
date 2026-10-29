@@ -117,7 +117,13 @@ POS_SEQ_STRING="NUMBER_POSSIBLE_SEQUENCES"
 NUMBER_CLOSED_SHUFFLES=(0 1 2 6 30 156 1455 11300 151221)
 PERM_SET_SIZE="${NUMBER_CLOSED_SHUFFLES[$N]}"
 
-COMMAND="$CBMC $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
+COMMAND="$CBMC $INSTR_OPTS $UI_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D PERM_SET_SIZE=$PERM_SET_SIZE $FILE $OPTS"
+
+#TODO remove extra directory?
+LOG_DIR=logs
+mkdir -p "$LOG_DIR"
+MEM_LOG="$LOG_DIR/protocol_"$HOST"_"$START_PRINT"_memlog.log"
+: > "$MEM_LOG"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
@@ -125,7 +131,28 @@ echo -e "# N = "$N", L = "$LENGTH", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIME
 echo -e "# Command: $COMMAND" | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
-timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE
+
+timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE &
+TIMEOUT_PID=`jobs -p`
+CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
+
+#Memory logging 
+(
+  while kill -0 "$CBMC_PID" 2>/dev/null; do
+    if [ -n "$CBMC_PID" ]; then
+        {  
+            if [ ! -s "$MEM_LOG" ]; then
+                ps -o pcpu,pid,comm,rss,vsz,%mem -p $CBMC_PID
+            else
+                ps --no-headers -o pcpu,pid,comm,rss,vsz,%mem -p $CBMC_PID 
+            fi  |  sed -z '$ s/\n$//'
+            printf "\t%s\n" "$(date +"%Y-%m-%d %H:%M:%S")"
+        } >> "$MEM_LOG"
+    fi
+    sleep 30
+  done
+)
+
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END
