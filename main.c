@@ -426,16 +426,46 @@ void printAction(struct Action *action){
    } else {
       printf("Error: could not print action, action is NULL\n");
    }
+   printf("\n");
 
 }
 
+int getLengthOfInt(int num){
+   int l = 0;
+   do {
+      num = num / 10;
+      l++;
+   } while (num != 0);
+   return l;
+
+}
+
+int getSequenceLen(struct Sequence *sequence){
+   int len = 0;
+   if(sequence != NULL){
+      len = n + 1;
+      //for(int i = 0; i < numberPossibleSequences; i++){
+         if(sequence->nums != NULL && sequence->dens != NULL){
+            for (int j = 0; j < numberProbabilities; j++){
+               len += getLengthOfInt(sequence->nums[j]);
+               len += getLengthOfInt(sequence->dens[j]);
+               len += 2; // for trailing whitespace + "/"
+            }
+         }
+      //}
+   }
+
+   return len;
+}
+
+
 // Print state with all sequences and probabilities
-void printState(struct State *state){
+void printState_unboxed(struct State *state){
    printf("State index: %i\n", state->index);
    if(state != NULL){
-      for(int i = 0; i < numberPossibleSequences; i++){ //was ist mit startstate?
+      for(int i = 0; i < numberPossibleSequences; i++){
          if(state->sequences[i] != NULL){
-            printf("  ");
+            printf("  | ");
             if(state->sequences[i]->symbols != NULL){
                for (int j = 0; j < n; j++){
                   printf("%i", state->sequences[i]->symbols[j]);
@@ -445,12 +475,76 @@ void printState(struct State *state){
                for (int j = 0; j < numberProbabilities; j++){
                   printf(" %i/%i", state->sequences[i]->nums[j], state->sequences[i]->dens[j]);
                }
-               printf("\n");
+               printf(" |  %i\n", getSequenceLen(state->sequences[i]));
             }
          } 
       }     
+   printf("\n");
    }
 }
+
+
+// Print state with all sequences and probabilities
+void printState(struct State *state){
+   printf("State index: %i\n", state->index);
+   if(state != NULL){
+
+      // Get size of necessary padding for all fractions to align values properly
+      int maxNum[numberProbabilities];
+      int maxDen[numberProbabilities];
+      memset(&maxNum, 0, numberProbabilities*sizeof(int));
+      memset(&maxDen, 0, numberProbabilities*sizeof(int));
+
+      for(int i = 0; i < numberPossibleSequences; i++){
+         if(state->sequences[i] != NULL){
+            if(state->sequences[i]->nums != NULL && state->sequences[i]->dens != NULL){
+               for (int j = 0; j < numberProbabilities; j++){
+                  maxNum[j] = (state->sequences[i]->nums[j] > maxNum[j]) ? state->sequences[i]->nums[j] : maxNum[j];
+                  maxDen[j] = (state->sequences[i]->dens[j] > maxDen[j]) ? state->sequences[i]->dens[j] : maxDen[j];
+               }
+            }
+         } 
+      }    
+
+      // Get width of the printed sequence (including spaces)
+      int lineLength = n + numberProbabilities*2 + 2;
+      for(int i = 0; i < numberProbabilities; i++){
+         maxNum[i] = getLengthOfInt(maxNum[i]);
+         maxDen[i] = getLengthOfInt(maxDen[i]);
+         lineLength += (maxNum[i] + maxDen[i]);
+      }
+
+      printf("  +");
+      for(int i = 0; i < lineLength; i++){
+         printf("-");
+      }
+      printf("+\n");
+
+      // Print symbols and fractions
+      for(int i = 0; i < numberPossibleSequences; i++){
+         if(state->sequences[i] != NULL){
+            printf("  | ");
+            if(state->sequences[i]->symbols != NULL){
+               for (int j = 0; j < n; j++){
+                  printf("%i", state->sequences[i]->symbols[j]);
+               }
+            }
+            if(state->sequences[i]->nums != NULL && state->sequences[i]->dens != NULL){
+               for (int j = 0; j < numberProbabilities; j++){
+                  printf(" %*i/%-*i", maxNum[j], state->sequences[i]->nums[j], maxDen[j], state->sequences[i]->dens[j]);
+               }
+               printf(" |\n");
+            }
+         } 
+      }     
+      printf("  +");
+      for(int i = 0; i < lineLength; i++){
+         printf("-");
+      }
+      printf("+\n\n");
+   }
+}
+
 
 
 int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
@@ -1144,6 +1238,9 @@ int parseObject(cJSON *traceItem){
 
 // Print states and actions 
 void printStatesAndActions(){
+   printf("maxGraphSize: %i\n", maxGraphSize);
+   printf("currentStateIndex: %i\n", currentStateIndex);
+
    for(int i = 0; i < maxGraphSize; i++){
       if(states[i] != NULL){
          printState(states[i]);
@@ -1189,9 +1286,8 @@ int main(int argc, char* argv[]) {
    }
 
 
-
    // The number of states (or actions) should not be larger than the protocol length times the number of symbols
-   maxGraphSize = l*numSym;
+   maxGraphSize = l*numSym+2;
    // Read data from file
 
    FILE *fp = fopen(argv[1], "r");
@@ -1200,11 +1296,9 @@ int main(int argc, char* argv[]) {
       printf("Error: Unable to open the file.\n");
       return EXIT_FAILURE;
    }
-
    // Get size of the file 
    fseek(fp, 0L, SEEK_END);
    int sz = ftell(fp);
-
    // Read commented lines (beginning with '#') and JSON data in two different buffers
    char *jsonBuffer = malloc(sizeof(char) * (sz+1));          // TODO: calloc? somehow, valgrind complains about this
    char *commentsBuffer = malloc(sizeof(char) * BUFFER_SIZE); 
@@ -1289,6 +1383,12 @@ int main(int argc, char* argv[]) {
 
    // Get result item in JSON array
    cJSON *resultItem = cJSON_GetObjectItemCaseSensitive(result, "result"); 
+   //printf("Object:\n");
+   //char *error_object = cJSON_Print(resultItem);
+   //printf("%s\n", error_object);  
+
+   //TODO: check if item exists but trace is missing (because status: "SUCCESS")
+
    if(!resultItem){
       printf("Error: Result not found\n");
       cleanJSON(jsonBuffer, commentsBuffer, json);
@@ -1305,6 +1405,7 @@ int main(int argc, char* argv[]) {
    if(!trace){
       printf("Trace does not exist\n");
       cleanJSON(jsonBuffer, commentsBuffer, json);
+      return EXIT_FAILURE;  //TODO: ?????
 
    } else {
 
@@ -1371,6 +1472,8 @@ int main(int argc, char* argv[]) {
 
    cleanJSON(jsonBuffer, commentsBuffer, json);
    cleanStructs();
+
+
 
    return EXIT_SUCCESS;
 }
