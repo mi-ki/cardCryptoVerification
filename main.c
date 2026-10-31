@@ -547,7 +547,7 @@ void printState(struct State *state){
 
 
 
-int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
+int parsePermutationSetValue(cJSON *valueObject, int x, int y){
    setParsingStep(PARSE_PERMSETVALUE);
    if (currentAction != SHUFFLE){
       printf("Error in trace (parsePermutationSetValue): current action should be shuffle (%i), but is %i\n", SHUFFLE, currentAction);
@@ -603,8 +603,9 @@ int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
 
 
 // TODO: errorhandling -> addErrorMessage
+// TODO: broken? sometimes, there are less permutations than maxPermSetSize (initialized) - why??
 // Parses value in permutationSet[X][Y]
-int parsePermutationSetValue(cJSON *valueObject, int x, int y){
+int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
    setParsingStep(PARSE_PERMSETVALUE);
    if (currentAction != SHUFFLE){
       printf("Error in trace (parsePermutationSetValue): current action should be shuffle (%i), but is %i\n", SHUFFLE, currentAction);
@@ -625,6 +626,7 @@ int parsePermutationSetValue(cJSON *valueObject, int x, int y){
       if (permSetCounter < (maxPermSetSize*n)){
          //printf("0  parsePermutationSetValue -> shuffle!\n");
          permSetCounter++;
+         printf("permSetCounter: %i, data: %i\n", permSetCounter, data);
       } else {
          permutationSetPreAssign = false;
 
@@ -651,7 +653,6 @@ int parsePermutationSetValue(cJSON *valueObject, int x, int y){
 
       // TODO: permutation is stored like in code, not in paper -> fix this?
       actions[currentStateIndex]->shuffle->permutationSet[x*n+y] = data;
-
       // On the last value, set permutationSetPreAssign to true, because the next occurence of permutationSet in the trace will be before the assignment again
       if (x == (permSetSize-1) && y == (n-1)){
          permutationSetPreAssign = true;
@@ -662,7 +663,6 @@ int parsePermutationSetValue(cJSON *valueObject, int x, int y){
    permIndex = -1;
    return NO_ERROR;
 }
-
 
 
 
@@ -1238,9 +1238,6 @@ int parseObject(cJSON *traceItem){
 
 // Print states and actions 
 void printStatesAndActions(){
-   printf("maxGraphSize: %i\n", maxGraphSize);
-   printf("currentStateIndex: %i\n", currentStateIndex);
-
    for(int i = 0; i < maxGraphSize; i++){
       if(states[i] != NULL){
          printState(states[i]);

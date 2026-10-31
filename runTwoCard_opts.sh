@@ -28,6 +28,7 @@ RAW=0
 MAX_PERM_SET_SIZE=""
 N=""
 LENGTH=""
+TITLE_OPTS=""
 
 
 while [[ $# -gt 0 ]]; do
@@ -59,13 +60,17 @@ while [[ $# -gt 0 ]]; do
          printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
          exit 2
       }
-      WEAK_SECURITY=1; shift ;;
+      WEAK_SECURITY=1;
+      TITLE_OPTS="input-possibilistic security";
+      shift ;;
     --output_security) 
       (($WEAK_SECURITY == 0)) || {
          printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
          exit 2
       }
-      WEAK_SECURITY=2; shift ;;
+      WEAK_SECURITY=2; 
+      TITLE_OPTS="output-possibilistic security";
+      shift ;;
     --finite_runtime) FINITE_RUNTIME=1; shift ;;
     -h|--help)    echo "Usage: $0 -n TODO ... [-r|--raw] ... TODO "; exit 0 ;;
     --) shift; break ;;
@@ -82,7 +87,7 @@ TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
 FILE="findTwoCardProtocol.c"
 HOST=`echo -e $(hostname)`
-FILENAME="twoCardProtocol_$HOST_$START_PRINT"
+FILENAME="twoCardProtocol_"$HOST"_"$START_PRINT""
 OUTFILE="$FILENAME.out"
 TRACE_OPTS='--compact-trace --trace-hex'
 INSTR_OPTS='--no-standard-checks'
@@ -169,6 +174,7 @@ OPTIONS="$OPTIONS FORCE_RANDOM_CUTS = $FORCE_RANDOM_CUTS, WEAK_SECURITY = $WEAK_
 
 
 if [ "$MAX_PERM_SET_SIZE" != "" ]; then
+  TITLE_OPTS="MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE, $TITLE_OPTS"
   OPTS="$OPTS -D MAX_PERM_SET_SIZE=$MAX_PERM_SET_SIZE"
   OPTIONS="$OPTIONS, MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE"
 
@@ -179,9 +185,10 @@ if (( "$RAW" == 0 )); then
     UI_OPTS='--json-ui'
 fi
 
+FURTHER_OPTIONS=""
 if [ "$OPTIONS" != "" ]
 then
-    OPTIONS='\n'"# Further Options: "$OPTIONS
+    FURTHER_OPTIONS='\n'"# Further Options: "$OPTIONS
 fi
 
 fact ()
@@ -268,7 +275,7 @@ fi
 COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
-echo -e $TIMESTAMP'\n'$VERSION$OPTIONS 2>&1 | tee -a $OUTFILE
+echo -e $TIMESTAMP'\n'$VERSION$FURTHER_OPTIONS 2>&1 | tee -a $OUTFILE
 echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
 echo -e "# Command: $COMMAND" | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
@@ -311,7 +318,7 @@ if [[ "$VERBOSE" -eq 1 ]]; then
 
                 ELAPSED_SECONDS=$(awk -F '[:.]' '{print $1 * 60 + $2}' <<< "$SEC")
 
-                printf "\n[%s] %s - %%CPU: %s  %%MEM: %s\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$COMMAND" "$CPU_VAL" "$MEM_VAL"
+                printf "\n[%s] %s - CPU: %s%% - MEM: %s%%\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$COMMAND" "$CPU_VAL" "$MEM_VAL"
                 #CPU_VALS+=("$CPU_VAL")
                 MEM_VALS+=("$MEM_VAL")
                 PLT_VALS+=("$ELAPSED_SECONDS $MEM_VAL")
@@ -361,6 +368,21 @@ if [[ "$VERBOSE" -eq 1 ]]; then
         AVG_MEM=$(awk -v count=$VALS_COUNT -v sum=$MEM_SUM 'BEGIN { printf "%.2f", sum / count }')
     fi
 
+    TITLE_OPTS="L = $LENGTH, N = $N, $TITLE_OPTS"
+    echo "$TITLE_OPTS"
+
+    if [ "$WEAK_SECURITY" == 0 ]; then
+        TITLE_OPTS="$TITLE_OPTS, probabilistic security"
+    fi
+
+    if [ "$CLOSED" == 1 ]; then
+        TITLE_OPTS="$TITLE_OPTS, closed protocol"
+    fi
+
+    if [ "$FORCE_RANDOM_CUTS" == 1 ]; then
+        TITLE_OPTS="$TITLE_OPTS, force random cuts"
+    fi
+
     # Generate plot
     {
         printf "set terminal svg\n"
@@ -368,18 +390,19 @@ if [[ "$VERBOSE" -eq 1 ]]; then
         printf "set tics\n"
         printf "set xlabel 'Time (Seconds)'\n"
         printf "set ylabel 'Memory usage (%%)'\n"
+                    printf 'set title "%s\\n%s" noenhanced\n' "$FILENAME" "$TITLE_OPTS"
         #printf "plot '-' using 1:2:xtic(1) with lines title 'Memory'\n"
-        printf "plot '-' using 1:2 with linespoints title 'Memory'\n"
+        printf "plot '-' using 1:2 with linespoints notitle\n"
         printf '%s\n' "${PLT_VALS[@]}"
         printf "e\n"
     } | gnuplot
 
 
     # Write statiscs to file
-    printf "Min. memory usage: %s\nMax. memory usage: %s\nAvg. memory usage: %s\n\n" "$MIN_MEM" "$MAX_MEM" "$AVG_MEM" > ""$FILENAME"_stats.txt"
+    printf "Min. memory usage: %s\nMax. memory usage: %s\nAvg. memory usage: %s\n\n" "$MIN_MEM" "$MAX_MEM" "$AVG_MEM" > "$FILENAME.dat"
 
-    printf "sec %%mem\n" >> ""$FILENAME"_stats.txt"
-    printf "%s\n" "${PLT_VALS[@]}" >> ""$FILENAME"_stats.txt"
+    printf "sec %%mem\n" >> "$FILENAME.dat"
+    printf "%s\n" "${PLT_VALS[@]}" >> "$FILENAME.dat"
 
 fi
 
