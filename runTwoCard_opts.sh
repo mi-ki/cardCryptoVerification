@@ -85,14 +85,19 @@ START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e
 START_SEC=$(date +%s)
 TIMESTAMP="# Timestamp: "$START
 CBMC='./cbmc'
+TIMEOUT="5d"
+NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
+
+if [ ! -d /Protocols ]; then
+  mkdir -p Protocols;
+fi
+
 FILE="findTwoCardProtocol.c"
 HOST=`echo -e $(hostname)`
-FILENAME="twoCardProtocol_"$HOST"_"$START_PRINT""
+FILENAME="Protocols/twoCardProtocol_"$HOST"_"$START_PRINT""
 OUTFILE="$FILENAME.out"
 TRACE_OPTS='--compact-trace --trace-hex'
 INSTR_OPTS='--no-standard-checks'
-TIMEOUT="5d"
-NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 
 
 if [[ $N == "" ]] || (( "$N" <= "0" ))
@@ -406,10 +411,37 @@ if [[ "$VERBOSE" -eq 1 ]]; then
 
 fi
 
+
+# Parser
 if [[ "$RAW" -eq 0 ]]; then
   #TODO check if trace exists?
   if [ "$MAX_PERM_SET_SIZE" == "" ]; then
     MAX_PERM_SET_SIZE="$POS_PERM"
   fi
-  ./Parser "$OUTFILE" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY" "$MAX_PERM_SET_SIZE"
+
+   #TODO: use this everywhere or move to top?
+   SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+   echo "$SCRIPT_DIR"
+
+  cd Parser 2> /dev/null
+  if [ $? -ne 0 ]; then
+      echo "Parser not found."
+      exit 1
+  fi
+
+  if [[ ! -x ./Parser ]]; then
+    echo "Parser not found or not executable. Building parser now."
+    make || {
+        echo "Build failed. Now terminating." >&2
+        exit 1
+    }
+  fi
+
+  ./Parser ""$SCRIPT_DIR"/"$OUTFILE"" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY" "$MAX_PERM_SET_SIZE"
+
+  PARSER_STATUS=$?
+  if [ $? -ne 0 ]; then
+      echo "Error in parsing."
+  fi
+  
 fi
