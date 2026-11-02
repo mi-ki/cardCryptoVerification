@@ -19,6 +19,38 @@
 export LC_NUMERIC=C
 export LC_ALL=C
 
+print_help () {
+    USAGE=(
+    './runTwoCard.sh [--help],show this help'
+    './runTwoCard.sh [OPTIONS],run script with options'
+
+    'Mandatory options'
+    '-n <value>,number of cards'
+    '-l <value>,protocol length'
+    'Possible configurations'
+    '--input_security,input-possibilistic security (default: probabilistic security)'
+    '--output_security,output-possibilistic security (default: probabilistic security)'
+    '--closed,limit search to closed protocols, i.e. only closed shuffles'
+    '--max_perm_set_size,<value>,set maximal permutazion set size'
+    '--force_random_cuts,limit the search to random cuts (default: no restriction)'
+    '--finite_runtime,finite runtime (default: restart-free Las Vegas)'
+    'Output options'
+    '--raw,raw output, trace is not parsed'
+    '--verbose,output trace in JSON format (terminal output is ommitted), trace is parsed'
+    'Any other option is directly passed to cbmc'
+    )
+
+    printf "\nUsage:\n\n";
+    for i in "${USAGE[@]}"; do
+        if  [[ $i = *,* ]]; then
+            printf '  %-30s %s\n' "${i%%,*}" "${i#*,}"
+        else 
+            printf "\n%s\n" "$i"
+        fi
+    done;
+}
+
+
 VERBOSE=0
 CLOSED=0
 FINITE_RUNTIME=0
@@ -29,19 +61,36 @@ MAX_PERM_SET_SIZE=""
 N=""
 LENGTH=""
 TITLE_OPTS=""
+#MACRO_OPTS=""
+EXTRA_ARGS=""
 
+START=$(date +'%Y-%m-%d %H:%M:%S %Z')
+START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
+START_SEC=$(date +%s)
+TIMESTAMP="# Timestamp: "$START
+CBMC='./cbmc'
+TIMEOUT="5d"
+
+# Input parameters
+if [[ $# -eq 0 ]]; then
+    echo "No valid options specified. Now terminating"
+    exit 1;
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)    
+      print_help;
+      exit 0 ;;
     -n)
-      (($# >= 2)) || {
-        printf 'No valid card number specified. Now terminating\n' "$1" >&2
+      [[ $# -ge 2 && $2 != -* && ( $# -eq 2 || $3 == -* ) ]] || {
+        printf 'No valid card number specified. Now terminating\n'
         exit 2
       }
       N=$2; shift 2 ;;
     -l)
-      (($# >= 2)) || {
-        printf 'No valid protocol length specified. Now terminating.\n' "$1" >&2
+      [[ $# -ge 2 && $2 != -* && ( $# -eq 2 || $3 == -* ) ]] || {
+        printf 'No valid protocol length specified. Now terminating.\n'
         exit 2
       }
       LENGTH=$2; shift 2 ;;
@@ -50,14 +99,14 @@ while [[ $# -gt 0 ]]; do
     --closed) CLOSED=1; shift ;;
     --force_random_cuts) FORCE_RANDOM_CUTS=1; shift ;;
     --max_perm_set_size)
-      (($# >= 2)) || {
-        printf 'Missing value for %s\n' "$1" >&2
+      [[ $# -ge 2 && $2 != -* && ( $# -eq 2 || $3 == -* ) ]] || {
+        printf 'Invalid number of arguments for %s. Now terminating.\n' "$1"
         exit 2
       }
       MAX_PERM_SET_SIZE=$2; shift 2 ;;
     --input_security) 
       (($WEAK_SECURITY == 0)) || {
-         printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
+         printf 'Ambiguous security level. Now terminating.\n'
          exit 2
       }
       WEAK_SECURITY=1;
@@ -65,29 +114,39 @@ while [[ $# -gt 0 ]]; do
       shift ;;
     --output_security) 
       (($WEAK_SECURITY == 0)) || {
-         printf 'Ambiguous security level. Now terminating.\n' "$1" >&2
+         printf 'Ambiguous security level. Now terminating.\n'
          exit 2
       }
       WEAK_SECURITY=2; 
       TITLE_OPTS="output-possibilistic security";
       shift ;;
     --finite_runtime) FINITE_RUNTIME=1; shift ;;
-    -h|--help)    echo "Usage: $0 -n TODO ... [-r|--raw] ... TODO "; exit 0 ;;
+    # TODO: delete?
+   # -D)
+   #   (($# >= 2)) || {
+   #     printf 'Missing value for %s\n' "$1" >&2
+   #     exit 2
+   #   }
+   #   MACRO_OPTS="$MACRO_OPTS $1 $2"; shift 2 ;;
     --) shift; break ;;
-    -*) echo "Unknown option: $1. Now terminating." >&2; exit 2 ;;
+    -*|--*)
+      EXTRA_ARGS+=" $1"
+      shift
+      while [[ $# -gt 0 && $1 != -* ]]; do
+        EXTRA_ARGS+=" $1"
+        shift
+      done
+      ;;
+    #-*) echo "Unknown option: $1. Now terminating." >&2; exit 2 ;;
     *) break ;;
   esac
 done
 
-#TODO ganz an den Anfang schieben
-START=$(date +'%Y-%m-%d %H:%M:%S %Z')
-START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
-START_SEC=$(date +%s)
-TIMESTAMP="# Timestamp: "$START
-CBMC='./cbmc'
-TIMEOUT="5d"
-NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
+echo "MACRO_OPTS: $MACRO_OPTS"
+echo "EXTRA_ARGS: $EXTRA_ARGS"
+#exit 1
 
+NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 if [ ! -d /Protocols ]; then
   mkdir -p Protocols;
 fi
@@ -165,18 +224,6 @@ OPTIONS=""
 
 OPTS="$OPTS -D FORCE_RANDOM_CUTS=$FORCE_RANDOM_CUTS -D WEAK_SECURITY=$WEAK_SECURITY -D CLOSED_PROTOCOL=$CLOSED"
 OPTIONS="$OPTIONS FORCE_RANDOM_CUTS = $FORCE_RANDOM_CUTS, WEAK_SECURITY = $WEAK_SECURITY, CLOSED_PROTOCOL = $CLOSED"
-
-# TODO: is check or just pass value?
-# check if 
-#if [ "$WEAK_SECURITY" != "" ]; then
-#  OPTS="$OPTS -D WEAK_SECURITY=$WEAK_SECURITY"
-#  OPTIONS="$OPTIONS, WEAK_SECURITY = $WEAK_SECURITY"
-#fi
-#if [[ "$CLOSED" -eq 1 ]]; then
-#  OPTS="$OPTS -D CLOSED_PROTOCOL=$CLOSED"
-#  OPTIONS="$OPTIONS, CLOSED_PROTOCOL = $CLOSED"
-#fi
-
 
 if [ "$MAX_PERM_SET_SIZE" != "" ]; then
   TITLE_OPTS="MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE, $TITLE_OPTS"
@@ -277,7 +324,7 @@ else
     NUMBER_SUBGROUP_SIZES='0'
 fi
 
-COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS"
+COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS $EXTRA_ARGS"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION$FURTHER_OPTIONS 2>&1 | tee -a $OUTFILE
@@ -308,7 +355,7 @@ fi
 #CPU_VALS=()  #TODO löschen?
 MEM_VALS=()
 PLT_VALS=()
-COMMAND=''
+CMD=''
 CPU_VAL=0
 MEM_VAL=0
 SEC=''
@@ -317,13 +364,13 @@ if [[ "$VERBOSE" -eq 1 ]]; then
     while kill -0 "$CBMC_PID" 2>/dev/null; do
         if [ -n "$CBMC_PID" ]; then
             {  
-                read -r COMMAND CPU_VAL MEM_VAL SEC < <(
+                read -r CMD CPU_VAL MEM_VAL SEC < <(
                     top -b -n 1 -p "$CBMC_PID" | sed -n '8,12p' | awk '{print $12, $9, $10, $11}'
                 )
 
                 ELAPSED_SECONDS=$(awk -F '[:.]' '{print $1 * 60 + $2}' <<< "$SEC")
 
-                printf "\n[%s] %s - CPU: %s%% - MEM: %s%%\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$COMMAND" "$CPU_VAL" "$MEM_VAL"
+                printf "\n[%s] %s - CPU: %s%% - MEM: %s%%\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$CMD" "$CPU_VAL" "$MEM_VAL"
                 #CPU_VALS+=("$CPU_VAL")
                 MEM_VALS+=("$MEM_VAL")
                 PLT_VALS+=("$ELAPSED_SECONDS $MEM_VAL")
@@ -347,101 +394,107 @@ echo -e "############################################################" 2>&1 | te
 
 if [[ "$VERBOSE" -eq 1 ]]; then
 
-    # Compute statistics
-    MIN_MEM=999999
-    MAX_MEM=0
-    AVG_MEM=0
-    MEM_SUM=0
+    if (( ${#PLT_VALS[@]} > 0 && ${#MEM_VALS[@]} > 0)); then
 
-    for VAL in "${MEM_VALS[@]}" 
-    do
-        MEM_SUM=$(awk -v val=$VAL -v sum=$MEM_SUM 'BEGIN { printf "%.6f", sum + val }')
+        # Compute statistics
+        MIN_MEM=999999
+        MAX_MEM=0
+        AVG_MEM=0
+        MEM_SUM=0
 
-        if (( $(echo $VAL $MAX_MEM | awk '{if ($1 > $2) print 1;}') )); then
-            MAX_MEM="$VAL"
+        for VAL in "${MEM_VALS[@]}" 
+        do
+            MEM_SUM=$(awk -v val=$VAL -v sum=$MEM_SUM 'BEGIN { printf "%.6f", sum + val }')
+
+            if (( $(echo $VAL $MAX_MEM | awk '{if ($1 > $2) print 1;}') )); then
+                MAX_MEM="$VAL"
+            fi
+            if (( $(echo $VAL $MIN_MEM | awk '{if ($1 < $2) print 1;}') )); then
+                MIN_MEM="$VAL"
+            fi
+        done
+
+        VALS_COUNT="${#MEM_VALS[@]}"
+        if [ $VALS_COUNT -eq 0 ]; then
+            #TODO
+            echo "ERROR" 
+        else
+            AVG_MEM=$(awk -v count=$VALS_COUNT -v sum=$MEM_SUM 'BEGIN { printf "%.2f", sum / count }')
         fi
-        if (( $(echo $VAL $MIN_MEM | awk '{if ($1 < $2) print 1;}') )); then
-            MIN_MEM="$VAL"
-        fi
-    done
 
-    VALS_COUNT="${#MEM_VALS[@]}"
-    if [ $VALS_COUNT -eq 0 ]; then
-        #TODO
-        echo "ERROR" 
+        TITLE_OPTS="L = $LENGTH, N = $N, $TITLE_OPTS"
+        echo "$TITLE_OPTS"
+
+        if [ "$WEAK_SECURITY" == 0 ]; then
+            TITLE_OPTS="$TITLE_OPTS, probabilistic security"
+        fi
+
+        if [ "$CLOSED" == 1 ]; then
+            TITLE_OPTS="$TITLE_OPTS, closed protocol"
+        fi
+
+        if [ "$FORCE_RANDOM_CUTS" == 1 ]; then
+            TITLE_OPTS="$TITLE_OPTS, force random cuts"
+        fi
+
+
+        # Generate plot
+        {
+            printf "set terminal svg\n"
+            printf "set output '%s_plot.svg'\n" "$FILENAME"
+            printf "set tics\n"
+            printf "set xlabel 'Time (Seconds)'\n"
+            printf "set ylabel 'Memory usage (%%)'\n"
+            printf 'set title "%s\\n%s" noenhanced\n' "$FILENAME" "$TITLE_OPTS"
+            #printf "plot '-' using 1:2:xtic(1) with lines title 'Memory'\n"
+            printf "plot '-' using 1:2 with linespoints notitle\n"
+            printf '%s\n' "${PLT_VALS[@]}"
+            printf "e\n"
+        } | gnuplot
+
+        # Write statiscs to file
+        printf "Min. memory usage: %s\nMax. memory usage: %s\nAvg. memory usage: %s\n\n" "$MIN_MEM" "$MAX_MEM" "$AVG_MEM" > "$FILENAME.dat"
+
+        printf "sec %%mem\n" >> "$FILENAME.dat"
+        printf "%s\n" "${PLT_VALS[@]}" >> "$FILENAME.dat"
+
     else
-        AVG_MEM=$(awk -v count=$VALS_COUNT -v sum=$MEM_SUM 'BEGIN { printf "%.2f", sum / count }')
+        printf "Data is missing, cannot generate plot.\n\n"
     fi
-
-    TITLE_OPTS="L = $LENGTH, N = $N, $TITLE_OPTS"
-    echo "$TITLE_OPTS"
-
-    if [ "$WEAK_SECURITY" == 0 ]; then
-        TITLE_OPTS="$TITLE_OPTS, probabilistic security"
-    fi
-
-    if [ "$CLOSED" == 1 ]; then
-        TITLE_OPTS="$TITLE_OPTS, closed protocol"
-    fi
-
-    if [ "$FORCE_RANDOM_CUTS" == 1 ]; then
-        TITLE_OPTS="$TITLE_OPTS, force random cuts"
-    fi
-
-    # Generate plot
-    {
-        printf "set terminal svg\n"
-        printf "set output '%s_plot.svg'\n" "$FILENAME"
-        printf "set tics\n"
-        printf "set xlabel 'Time (Seconds)'\n"
-        printf "set ylabel 'Memory usage (%%)'\n"
-                    printf 'set title "%s\\n%s" noenhanced\n' "$FILENAME" "$TITLE_OPTS"
-        #printf "plot '-' using 1:2:xtic(1) with lines title 'Memory'\n"
-        printf "plot '-' using 1:2 with linespoints notitle\n"
-        printf '%s\n' "${PLT_VALS[@]}"
-        printf "e\n"
-    } | gnuplot
-
-
-    # Write statiscs to file
-    printf "Min. memory usage: %s\nMax. memory usage: %s\nAvg. memory usage: %s\n\n" "$MIN_MEM" "$MAX_MEM" "$AVG_MEM" > "$FILENAME.dat"
-
-    printf "sec %%mem\n" >> "$FILENAME.dat"
-    printf "%s\n" "${PLT_VALS[@]}" >> "$FILENAME.dat"
 
 fi
 
 
 # Parser
 if [[ "$RAW" -eq 0 ]]; then
-  #TODO check if trace exists?
-  if [ "$MAX_PERM_SET_SIZE" == "" ]; then
-    MAX_PERM_SET_SIZE="$POS_PERM"
-  fi
-
-   #TODO: use this everywhere or move to top?
-   SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-   echo "$SCRIPT_DIR"
-
-  cd Parser 2> /dev/null
-  if [ $? -ne 0 ]; then
-      echo "Parser not found."
-      exit 1
-  fi
-
-  if [[ ! -x ./Parser ]]; then
-    echo "Parser not found or not executable. Building parser now."
-    make || {
-        echo "Build failed. Now terminating." >&2
+   #TODO check if trace/outfile exists?
+   if [ "$MAX_PERM_SET_SIZE" == "" ]; then
+     MAX_PERM_SET_SIZE="$POS_PERM"
+   fi
+ 
+    #TODO: use this everywhere or move to top?
+    SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+    echo "$SCRIPT_DIR"
+ 
+    cd Parser 2> /dev/null
+    if [ $? -ne 0 ]; then
+        echo "Parser not found."
         exit 1
-    }
-  fi
-
-  ./Parser ""$SCRIPT_DIR"/"$OUTFILE"" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY" "$MAX_PERM_SET_SIZE"
-
-  PARSER_STATUS=$?
-  if [ $? -ne 0 ]; then
-      echo "Error in parsing."
-  fi
+    fi
   
+    if [[ ! -x ./Parser ]]; then
+      echo "Parser not found or not executable. Building parser now."
+      make || {
+          echo "Build failed. Now terminating." >&2
+          exit 1
+      }
+    fi
+
+    ./Parser ""$SCRIPT_DIR"/"$OUTFILE"" "$LENGTH" "$N" "$NUM_SYM" "$POS_PERM" "$POS_SEQ" "$WEAK_SECURITY" "$MAX_PERM_SET_SIZE"
+  
+    PARSER_STATUS=$?
+    if [ $? -ne 0 ]; then
+        echo "Error in parsing."
+    fi
+
 fi
