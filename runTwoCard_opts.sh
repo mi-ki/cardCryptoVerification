@@ -142,8 +142,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "MACRO_OPTS: $MACRO_OPTS"
-echo "EXTRA_ARGS: $EXTRA_ARGS"
+#debugging:
+#echo "MACRO_OPTS: $MACRO_OPTS"
+#echo "EXTRA_ARGS: $EXTRA_ARGS"
+#echo "Raw: $RAW"
 #exit 1
 
 NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
@@ -327,13 +329,16 @@ fi
 COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS $EXTRA_ARGS"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
-echo -e $TIMESTAMP'\n'$VERSION$FURTHER_OPTIONS 2>&1 | tee -a $OUTFILE
-echo -e "# N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT 2>&1 | tee -a $OUTFILE
-echo -e "# Command: $COMMAND" | tee -a $OUTFILE
+echo -e $TIMESTAMP'\n'$VERSION 2>&1 | tee -a $OUTFILE
+echo -e "# Options: N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT$FURTHER_OPTIONS 2>&1 | tee -a $OUTFILE
+if [[ "$VERBOSE" -eq 1 ]]; then
+    echo -e "# Command: $COMMAND" | tee -a $OUTFILE
+fi
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
 
 if [[ "$RAW" -eq 0 ]]; then
+    # output geht nirgendwo hin?
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null & 
     TIMEOUT_PID=`jobs -p`
 else 
@@ -352,7 +357,6 @@ fi
 
 
 # Memory logging 
-#CPU_VALS=()  #TODO löschen?
 MEM_VALS=()
 PLT_VALS=()
 CMD=''
@@ -371,7 +375,6 @@ if [[ "$VERBOSE" -eq 1 ]]; then
                 ELAPSED_SECONDS=$(awk -F '[:.]' '{print $1 * 60 + $2}' <<< "$SEC")
 
                 printf "\n[%s] %s - CPU: %s%% - MEM: %s%%\n" "$(date +"%Y-%m-%d %H:%M:%S %Z")" "$CMD" "$CPU_VAL" "$MEM_VAL"
-                #CPU_VALS+=("$CPU_VAL")
                 MEM_VALS+=("$MEM_VAL")
                 PLT_VALS+=("$ELAPSED_SECONDS $MEM_VAL")
             } 
