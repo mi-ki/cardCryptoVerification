@@ -22,7 +22,7 @@
 
 // TODO: Variable names
 
-#define BUFFER_SIZE 2048
+#define BUFFER_SIZE 20000     //TODO: this size is only needed when verbosity level is very high -> what to do?
 #define BUFFER_SIZE_SMALL 64
 
 #define TURN 0 // TODO: maybe take from the same  (header)file as findTwoCardProtocol? 
@@ -1295,13 +1295,13 @@ int main(int argc, char* argv[]) {
    }
    // Get size of the file 
    fseek(fp, 0L, SEEK_END);
+
    int sz = ftell(fp);
    // Read commented lines (beginning with '#') and JSON data in two different buffers
    char *jsonBuffer = malloc(sizeof(char) * (sz+1));          // TODO: calloc? somehow, valgrind complains about this
    char *commentsBuffer = malloc(sizeof(char) * BUFFER_SIZE); 
 
    rewind(fp); // set fp to start of the file again?
-
    char line[BUFFER_SIZE];
    char *jsonPtr = jsonBuffer;
    int lineLength = 0;
@@ -1329,6 +1329,7 @@ int main(int argc, char* argv[]) {
 
    // Parse JSON data
    cJSON *json = cJSON_Parse(jsonBuffer);
+
    if (!json) {
      const char *error_ptr = cJSON_GetErrorPtr();
      if (error_ptr) {
@@ -1355,17 +1356,21 @@ int main(int argc, char* argv[]) {
    // Find item with result in JSON array
    cJSON *result = NULL;
    int ouputSize = cJSON_GetArraySize(json);
-   for (int i = 0; i < ouputSize; i++){
-      cJSON *item = cJSON_GetArrayItem(json, i);
-      if(cJSON_GetObjectItemCaseSensitive(item, "result") != NULL){
-         result = item;
+
+   cJSON *outItem = NULL;
+   int i = 0;
+   cJSON_ArrayForEach(outItem, json){
+      if(cJSON_GetObjectItemCaseSensitive(outItem, "result") != NULL){
+         result = outItem;
          break;
       } else if (i == ouputSize){
          printf("Error: trace not found\n");
          cleanJSON(jsonBuffer, commentsBuffer, json);
          return EXIT_FAILURE;
       }
+      i++;
    }
+
 
    // Get version 
    cJSON *versionObject = cJSON_GetArrayItem(json, 0);
