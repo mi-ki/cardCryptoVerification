@@ -339,14 +339,20 @@ echo -e '\n'"############################################################"'\n' 2
 
 if [[ "$RAW" -eq 0 ]]; then
     # output geht nirgendwo hin?
+    ##{ time $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null ; } 2> out.time & 
+    #{ time $COMMAND 2>&1 | tee -a $OUTFILE ; } 2> time.log &
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null & 
     TIMEOUT_PID=`jobs -p`
+    echo "Timout pid: $TIMEOUT_PID"
 else 
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE  & 
     TIMEOUT_PID=`jobs -p`
 fi
 
     CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
+    #echo "CBMC_PID: $CBMC_PID"
+    #ps -p $CBMC_PID
+    #echo time.log
 
 
 #timeout "$TIMEOUT" time -q -f 'CBMC runtime: %e seconds' $COMMAND 2>&1 | tee -a "$OUTFILE" &
@@ -365,7 +371,9 @@ MEM_VAL=0
 SEC=''
 
 if [[ "$VERBOSE" -eq 1 ]]; then
+    top -b -n 1 -p "$CBMC_PID" | sed -n '8,12p' | awk '{print $12, $9, $10, $11}'
     while kill -0 "$CBMC_PID" 2>/dev/null; do
+
         if [ -n "$CBMC_PID" ]; then
             {  
                 read -r CMD CPU_VAL MEM_VAL SEC < <(
