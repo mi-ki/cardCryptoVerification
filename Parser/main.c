@@ -616,6 +616,7 @@ int parsePermutationSetValue2(cJSON *valueObject, int x, int y){
       printf("Error parsing permutation Set (parsePermutationSetValue): data not valid  \n");
       return data;
    }
+   
 
    /** 
     * Because a 'whole possible permutation set' of (possiblePermutations*n) occurences of 'permutationSet[X][Y]' in the trace 

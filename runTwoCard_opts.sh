@@ -28,8 +28,8 @@ print_help () {
     '-n <value>,number of cards'
     '-l <value>,protocol length'
     'Possible configurations'
-    '--input_security,input-possibilistic security (default: probabilistic security)'
-    '--output_security,output-possibilistic security (default: probabilistic security)'
+    '--input_poss_security,input-possibilistic security (default: probabilistic security)'
+    '--output_poss_security,output-possibilistic security (default: probabilistic security)'
     '--closed,limit search to closed protocols, i.e. only closed shuffles'
     '--max_perm_set_size,<value>,set maximal permutazion set size'
     '--force_random_cuts,limit the search to random cuts (default: no restriction)'
@@ -54,15 +54,14 @@ print_help () {
 VERBOSE=0
 CLOSED=0
 FINITE_RUNTIME=0
-WEAK_SECURITY=0
+WEAK_SECURITY=-1
 FORCE_RANDOM_CUTS=0
 RAW=0
 MAX_PERM_SET_SIZE=""
 N=""
 LENGTH=""
 TITLE_OPTS=""
-#MACRO_OPTS=""
-EXTRA_ARGS=""
+EXTRA_ARGS=()
 
 START=$(date +'%Y-%m-%d %H:%M:%S %Z')
 START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
@@ -104,49 +103,61 @@ while [[ $# -gt 0 ]]; do
         exit 2
       }
       MAX_PERM_SET_SIZE=$2; shift 2 ;;
-    --input_security) 
-      (($WEAK_SECURITY == 0)) || {
+    --input_poss_security) 
+      (($WEAK_SECURITY == -1)) || {
          printf 'Ambiguous security level. Now terminating.\n'
          exit 2
       }
       WEAK_SECURITY=1;
       TITLE_OPTS="input-possibilistic security";
       shift ;;
-    --output_security) 
-      (($WEAK_SECURITY == 0)) || {
+    --output_poss_security) 
+      (($WEAK_SECURITY == -1)) || {
          printf 'Ambiguous security level. Now terminating.\n'
          exit 2
       }
       WEAK_SECURITY=2; 
       TITLE_OPTS="output-possibilistic security";
       shift ;;
+    --prob_security) 
+      (($WEAK_SECURITY == -1)) || {
+         printf 'Ambiguous security level. Now terminating.\n'
+         exit 2
+      }
+      WEAK_SECURITY=0; 
+      TITLE_OPTS="output-possibilistic security";
+      shift ;;
     --finite_runtime) FINITE_RUNTIME=1; shift ;;
-    # TODO: delete?
-   # -D)
-   #   (($# >= 2)) || {
-   #     printf 'Missing value for %s\n' "$1" >&2
-   #     exit 2
-   #   }
-   #   MACRO_OPTS="$MACRO_OPTS $1 $2"; shift 2 ;;
     --) shift; break ;;
     -*|--*)
-      EXTRA_ARGS+=" $1"
+      EXTRA_ARG="$1"
       shift
       while [[ $# -gt 0 && $1 != -* ]]; do
-        EXTRA_ARGS+=" $1"
+        EXTRA_ARG+=" $1"
         shift
       done
+      EXTRA_ARGS+=("$EXTRA_ARG")
       ;;
-    #-*) echo "Unknown option: $1. Now terminating." >&2; exit 2 ;;
     *) break ;;
   esac
 done
 
-#debugging:
-#echo "MACRO_OPTS: $MACRO_OPTS"
-#echo "EXTRA_ARGS: $EXTRA_ARGS"
-#echo "Raw: $RAW"
-#exit 1
+
+#TODO move somewhere else?
+if [[ "$WEAK_SECURITY" == -1 ]]; then
+    WEAK_SECURITY=0
+    echo -e "Security level not set. Using probabilistic security."
+fi
+
+# Filter extra arguments for exact duplicates
+if [ ${#EXTRA_ARGS[@]} -ne 0  ]; then
+    printf "Any additional argument may lead to unexpected behaviour!\n"
+    
+    FILTERED_EXTRA_ARGS=()
+    readarray -td '' FILTERED_EXTRA_ARGS < <(printf '%s\0' "${EXTRA_ARGS[@]}" | sort -uz)
+    JOINED_EXTRAS="$(printf "%s" "${FILTERED_EXTRA_ARGS[*]}")" # Join the array into a single string
+fi
+
 
 NUM_SYM='2' # This is the setting where all cards carry only two distinct symbols
 if [ ! -d /Protocols ]; then
@@ -159,7 +170,7 @@ FILENAME="Protocols/twoCardProtocol_"$HOST"_"$START_PRINT""
 OUTFILE="$FILENAME.out"
 TRACE_OPTS='--compact-trace --trace-hex'
 INSTR_OPTS='--no-standard-checks'
-
+CBMC_VERBOSITY='--verbosity 9'
 
 if [[ $N == "" ]] || (( "$N" <= "0" ))
 then
@@ -231,7 +242,6 @@ if [ "$MAX_PERM_SET_SIZE" != "" ]; then
   TITLE_OPTS="MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE, $TITLE_OPTS"
   OPTS="$OPTS -D MAX_PERM_SET_SIZE=$MAX_PERM_SET_SIZE"
   OPTIONS="$OPTIONS, MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE"
-
 fi
 
 UI_OPTS=''
@@ -267,27 +277,27 @@ NOM='0'
 DENOM='1'
 VAL=$[$N / $NUM_SYM]
 fact $VAL
-FOO=$factorial
+FACT=$factorial
 BOUND=$[$NUM_SYM - 1]
 
 for i in $(eval echo "{1..$BOUND}")
 do
     NOM=$[$NOM + $VAL]
-    DENOM=$[$DENOM * $FOO]
+    DENOM=$[$DENOM * $FACT]
 done
 
 REST=$[$N - $NOM]
 fact $REST
-FOO=$factorial
-DENOM=$[$DENOM * $FOO]
+FACT=$factorial
+DENOM=$[$DENOM * $FACT]
 
 fact $N
-FOO=$factorial
+FACT=$factorial
 
-POS_SEQ=$[$FOO / $DENOM]
+POS_SEQ=$[$FACT / $DENOM]
 POS_SEQ_STRING="NUMBER_POSSIBLE_SEQUENCES"
 
-POS_PERM=$FOO
+POS_PERM=$FACT
 POS_PERM_STRING="NUMBER_POSSIBLE_PERMUTATIONS"
 
 NUMBER_CLOSED_SHUFFLES=(0 1 2 6 30 156 1455 11300 151221)
@@ -326,7 +336,7 @@ else
     NUMBER_SUBGROUP_SIZES='0'
 fi
 
-COMMAND="$CBMC $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS $EXTRA_ARGS"
+COMMAND="$CBMC $JOINED_EXTRAS $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS $CBMC_VERBOSITY"
 
 echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
 echo -e $TIMESTAMP'\n'$VERSION 2>&1 | tee -a $OUTFILE
@@ -397,9 +407,51 @@ END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END
 DIFF=$(( $END_SEC - $START_SEC ))
+
+
+# Extract lines with statistics from outfile
+mapfile -t out_stats < <(awk '/variables,\s/ || /Runtime\s/ || /Solving with\s/ {print $0}' $OUTFILE)
+
+var_cnt=""
+clause_cnt=""
+runtime_solver=""
+runtime_decision=""
+solving_with=""
+
+# TODO: avoid extra variables if not needed?
+STATS_PRINT=()
+
+# Filter statitics
+for stat in "${out_stats[@]}"; do
+    if [[ $stat =~ ([0-9]+)[[:space:]]+variables ]]; then
+        var_cnt=${BASH_REMATCH[1]}
+        STATS_PRINT+=(" variables: $var_cnt")
+    fi    
+    if [[ $stat =~ ([0-9]+)[[:space:]]+clauses ]]; then
+        clause_cnt=${BASH_REMATCH[1]}
+        STATS_PRINT+=(" clauses: $clause_cnt")
+    fi
+    if [[ $stat =~ Runtime[[:space:]]Solver:[[:space:]]*([0-9]+([.][0-9]+)?) ]]; then
+        runtime_solver=${BASH_REMATCH[1]}
+        STATS_PRINT+=(" Runtime Solver: $runtime_solver")
+
+    fi
+    if [[ $stat =~ Runtime[[:space:]]decision[[:space:]]procedure:[[:space:]]*([0-9]+([.][0-9]+)?) ]]; then
+        runtime_decision=${BASH_REMATCH[1]}
+        STATS_PRINT+=(" Runtime decision procedure: $runtime_decision")
+
+    fi
+    if [[ $stat =~ Solving[[:space:]]with[[:space:]]*([^\"]*)\"? ]]; then
+        solving_with=${BASH_REMATCH[1]}
+        STATS_PRINT+=(" Solving with: $solving_with")
+    fi
+done
+
+JOINED_STATS=$(IFS=,; printf '%s' "${STATS_PRINT[*]}")
+
 echo -e '\n'"############################################################" 2>&1 | tee -a $OUTFILE
 echo -e $FINAL_TIMESTAMP 2>&1 | tee -a $OUTFILE
-echo -e "# It took $DIFF seconds." 2>&1 | tee -a $OUTFILE
+echo -e "# It took $DIFF seconds. $JOINED_STATS" 2>&1 | tee -a $OUTFILE
 echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 
 
