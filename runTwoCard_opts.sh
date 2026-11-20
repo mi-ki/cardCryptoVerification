@@ -50,6 +50,14 @@ print_help () {
     done;
 }
 
+print_comments() {
+    if [[ "$RAW" -eq 0 ]]; then
+        cat
+    else
+        tee -a "$OUTFILE"
+    fi
+}
+
 
 VERBOSE=0
 CLOSED=0
@@ -171,6 +179,7 @@ OUTFILE="$FILENAME.out"
 TRACE_OPTS='--compact-trace --trace-hex'
 INSTR_OPTS='--no-standard-checks'
 CBMC_VERBOSITY='--verbosity 9'
+
 
 if [[ $N == "" ]] || (( "$N" <= "0" ))
 then
@@ -336,29 +345,33 @@ else
     NUMBER_SUBGROUP_SIZES='0'
 fi
 
+
 COMMAND="$CBMC $JOINED_EXTRAS $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N=$N -D NUM_SYM=$NUM_SYM -D $POS_SEQ_STRING=$POS_SEQ -D $POS_PERM_STRING=$POS_PERM -D PERM_SET_SIZE=$PERM_SET_SIZE -D NUMBER_SUBGROUP_SIZES=$NUMBER_SUBGROUP_SIZES $SUBGROUP_SIZES $FILE $OPTS $CBMC_VERBOSITY"
 
-echo -e '\n'"############################################################" 2>&1 | tee $OUTFILE
-echo -e $TIMESTAMP'\n'$VERSION 2>&1 | tee -a $OUTFILE
-echo -e "# Options: N = "$N", NUM_SYM = "$NUM_SYM", L = "$LENGTH", NUMBER_POSSIBLE_PERMUTATIONS = "$POS_PERM", NUMBER_POSSIBLE_SEQUENCES = "$POS_SEQ", TIMEOUT = "$TIMEOUT$FURTHER_OPTIONS 2>&1 | tee -a $OUTFILE
-if [[ "$VERBOSE" -eq 1 ]]; then
-    echo -e "# Command: $COMMAND" | tee -a $OUTFILE
-fi
-echo -e "############################################################" 2>&1 | tee -a $OUTFILE
-echo -e '\n'"############################################################"'\n' 2>&1 | tee -a $OUTFILE
+{
+    printf '\n%s\n' '############################################################'
+    printf '%s\n%s\n' "$TIMESTAMP" "$VERSION"
+    printf '%s\n' "# Options: N = $N, NUM_SYM = $NUM_SYM, L = $LENGTH, NUMBER_POSSIBLE_PERMUTATIONS = $POS_PERM, NUMBER_POSSIBLE_SEQUENCES = $POS_SEQ, TIMEOUT = $TIMEOUT$FURTHER_OPTIONS"
+    if [[ "$VERBOSE" -eq 1 ]]; then
+        printf '%s\n' "# Command: $COMMAND"
+    fi
+    printf '%s\n' '############################################################'
+    printf '\n%s\n\n' '############################################################'
+} 2>&1 | print_comments
 
+
+CBMC_JSON=""$FILENAME"_tmp.out"
 if [[ "$RAW" -eq 0 ]]; then
     # output geht nirgendwo hin?
     ##{ time $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null ; } 2> out.time & 
     #{ time $COMMAND 2>&1 | tee -a $OUTFILE ; } 2> time.log &
-    timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE >/dev/null & 
+    timeout $TIMEOUT $COMMAND 2>&1 | tee -a $CBMC_JSON >/dev/null & 
     TIMEOUT_PID=`jobs -p`
-    echo "Timout pid: $TIMEOUT_PID"
+    #echo "Timout pid: $TIMEOUT_PID"
 else 
     timeout $TIMEOUT $COMMAND 2>&1 | tee -a $OUTFILE  & 
     TIMEOUT_PID=`jobs -p`
 fi
-
     CBMC_PID=$(ps -o pid= --ppid "$TIMEOUT_PID")
     #echo "CBMC_PID: $CBMC_PID"
     #ps -p $CBMC_PID
@@ -385,7 +398,7 @@ if [[ "$VERBOSE" -eq 1 ]]; then
     while kill -0 "$CBMC_PID" 2>/dev/null; do
 
         if [ -n "$CBMC_PID" ]; then
-            {  
+            {
                 read -r CMD CPU_VAL MEM_VAL SEC < <(
                     top -b -n 1 -p "$CBMC_PID" | sed -n '8,12p' | awk '{print $12, $9, $10, $11}'
                 )
@@ -403,56 +416,93 @@ fi
 
 wait $TIMEOUT_PID
 
+
 END=$(date +'%Y-%m-%d %H:%M:%S %Z')
 END_SEC=$(date +%s)
 FINAL_TIMESTAMP="# Final Time: "$END
 DIFF=$(( $END_SEC - $START_SEC ))
 
 
-# Extract lines with statistics from outfile
-mapfile -t out_stats < <(awk '/variables,\s/ || /Runtime\s/ || /Solving with\s/ {print $0}' $OUTFILE)
+# 3. schlau anordnen 
+if [[ "$RAW" -eq 0 ]]; then
+    jq -n \
+        --arg startTime "$START" \
+        --arg timeout "$TIMEOUT" \
+        --argjson numSym "$NUM_SYM" \
+        --argjson length "$LENGTH" \
+        --argjson weakSecurity "$WEAK_SECURITY" \
+        --argjson forceRandomCuts "$FORCE_RANDOM_CUTS" \
+        --argjson closed "$CLOSED" \
+        --argjson numberPossiblePermutations "$POS_PERM" \
+        --argjson numberPossibleSequences "$POS_SEQ" \
+        --arg command "$COMMAND" \
+        --slurpfile cbmcOutput "$CBMC_JSON" \
+        --arg finalTime "$FINAL_TIMESTAMP" \
+        --arg runningTime "$DIFF" \
+        '$ARGS.named + {cbmcOutput: $cbmcOutput[0]}' > $OUTFILE
 
-var_cnt=""
-clause_cnt=""
-runtime_solver=""
-runtime_decision=""
-solving_with=""
+    rm "$CBMC_JSON" 
 
-# TODO: avoid extra variables if not needed?
-STATS_PRINT=()
+fi
 
-# Filter statitics
-for stat in "${out_stats[@]}"; do
-    if [[ $stat =~ ([0-9]+)[[:space:]]+variables ]]; then
-        var_cnt=${BASH_REMATCH[1]}
-        STATS_PRINT+=(" variables: $var_cnt")
+
+
+{
+    printf '\n%s\n' '#####################################################################'
+    printf '%s\n' "$FINAL_TIMESTAMP"
+    printf '%s\n' "# It took $DIFF seconds."
+    printf '%s\n' '#####################################################################'
+} 2>&1 | print_comments
+
+# Parse statistics from output file
+stats=()
+runtimes=()
+
+# Read statistics (runtimes, number of variables and clauses, solver) from the outfile
+parse_stats() {
+    awk '
+        /variables/ && /clauses/ {
+            c = split($0, b, ",")
+            for (i = 1; i <= c; i++) {
+                l = split(b[i], v)
+                printf "%s: %i\n", v[2], v[1]
+            }
+            next
+        }
+        /Runtime\s/ { print }
+        /Solving with/ {
+            line = $0
+            sub(/^.*Solving with[[:space:]]*/, "", line)
+            printf "Solver: %s\n", line
+        }    '
+}
+
+while IFS= read -r line; do
+    if [[ $line == 'R'* ]]; then 
+        runtimes+=("$line")
+    else
+        stats+=("$line")
     fi    
-    if [[ $stat =~ ([0-9]+)[[:space:]]+clauses ]]; then
-        clause_cnt=${BASH_REMATCH[1]}
-        STATS_PRINT+=(" clauses: $clause_cnt")
+done < <(
+    # In case of a raw output, read directly from the outfile
+    if [[ "$RAW" -eq 1 ]]; then
+        parse_stats < "$OUTFILE"
+    # If the outfile is in JSON-Format, filter the values of "messageText" first
+    else
+        jq -r '.cbmcOutput[] | select(.messageText != null) | .messageText' "$OUTFILE" | parse_stats
     fi
-    if [[ $stat =~ Runtime[[:space:]]Solver:[[:space:]]*([0-9]+([.][0-9]+)?) ]]; then
-        runtime_solver=${BASH_REMATCH[1]}
-        STATS_PRINT+=(" Runtime Solver: $runtime_solver")
+)
 
-    fi
-    if [[ $stat =~ Runtime[[:space:]]decision[[:space:]]procedure:[[:space:]]*([0-9]+([.][0-9]+)?) ]]; then
-        runtime_decision=${BASH_REMATCH[1]}
-        STATS_PRINT+=(" Runtime decision procedure: $runtime_decision")
-
-    fi
-    if [[ $stat =~ Solving[[:space:]]with[[:space:]]*([^\"]*)\"? ]]; then
-        solving_with=${BASH_REMATCH[1]}
-        STATS_PRINT+=(" Solving with: $solving_with")
-    fi
+# Print statistics
+for i in "${stats[@]}"; do
+    printf '|  %-30s | %-32s|\n' "${i%%:*}" "${i#*:}"
 done
+printf '%s\n' '----------------------------------+----------------------------------'
+for i in "${runtimes[@]}"; do
+    printf '|  %-30s | %-32s|\n' "${i%%:*}" "${i#*:}"
+done
+printf '%s\n' '#####################################################################'
 
-JOINED_STATS=$(IFS=,; printf '%s' "${STATS_PRINT[*]}")
-
-echo -e '\n'"############################################################" 2>&1 | tee -a $OUTFILE
-echo -e $FINAL_TIMESTAMP 2>&1 | tee -a $OUTFILE
-echo -e "# It took $DIFF seconds. $JOINED_STATS" 2>&1 | tee -a $OUTFILE
-echo -e "############################################################" 2>&1 | tee -a $OUTFILE
 
 
 if [[ "$VERBOSE" -eq 1 ]]; then
@@ -486,7 +536,6 @@ if [[ "$VERBOSE" -eq 1 ]]; then
         fi
 
         TITLE_OPTS="L = $LENGTH, N = $N, $TITLE_OPTS"
-        echo "$TITLE_OPTS"
 
         if [ "$WEAK_SECURITY" == 0 ]; then
             TITLE_OPTS="$TITLE_OPTS, probabilistic security"
