@@ -1348,21 +1348,30 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+   cJSON *cbmcOutput = cJSON_GetObjectItemCaseSensitive(json, "cbmcOutput");
+   //TODO check if NULL
+
    // Access JSON data
-   if(!cJSON_IsArray(json)){
+   if(!cJSON_IsArray(cbmcOutput)){
       printf("Error: cbmc output is not a JSON array");
       return EXIT_FAILURE;
    }
 
    // Find item with result in JSON array
    cJSON *result = NULL;
-   int ouputSize = cJSON_GetArraySize(json);
+   int ouputSize = cJSON_GetArraySize(cbmcOutput);
+   printf("SIZE: %i\n", ouputSize);
+   //char *error_object = cJSON_Print(cbmcOutput);
+   //printf("%s\nblabla\n\n", error_object);  
+   //cJSON_free(error_object);
 
    cJSON *outItem = NULL;
    int i = 0;
-   cJSON_ArrayForEach(outItem, json){
+   cJSON_ArrayForEach(outItem, cbmcOutput){
       if(cJSON_GetObjectItemCaseSensitive(outItem, "result") != NULL){
          result = outItem;
+         //char *error_object = cJSON_Print(result);
+         //printf("%s\n", error_object);  
          break;
       } else if (i == ouputSize){
          printf("Error: trace not found\n");
@@ -1374,7 +1383,7 @@ int main(int argc, char* argv[]) {
 
 
    // Get version 
-   cJSON *versionObject = cJSON_GetArrayItem(json, 0);
+   cJSON *versionObject = cJSON_GetArrayItem(cbmcOutput, 0);
    cJSON *version;
    if(versionObject){
       version = cJSON_GetObjectItemCaseSensitive(versionObject, "program");

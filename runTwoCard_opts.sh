@@ -58,6 +58,14 @@ print_comments() {
     fi
 }
 
+declare -A title_map=(
+    [WEAK_SECURITY=0]="probabilistic security"
+    [WEAK_SECURITY=1]="input-possibilistic security"
+    [WEAK_SECURITY=2]="output-possibilistic security"
+    [CLOSED=1]="closed protocol"
+    [FORCE_RANDOM_CUTS=1]="force random cuts"
+    [FINITE_RUNTIME=1]="finite runtime"
+    )
 
 VERBOSE=0
 CLOSED=0
@@ -68,8 +76,10 @@ RAW=0
 MAX_PERM_SET_SIZE=""
 N=""
 LENGTH=""
-TITLE_OPTS=""
+UI_OPTS=''
 EXTRA_ARGS=()
+OPTS_ARRAY=()
+#TODO: think about variables for parameters (still needed?)
 
 START=$(date +'%Y-%m-%d %H:%M:%S %Z')
 START_PRINT=`echo -e "$START" | sed -e 's/\s/\_/g' | sed -e 's/\-/\_/g' | sed -e 's/:/\_/g'`
@@ -103,21 +113,21 @@ while [[ $# -gt 0 ]]; do
       LENGTH=$2; shift 2 ;;
     -v|--verbose) VERBOSE=1; shift ;;
     -r|--raw) RAW=1; shift ;;
-    --closed) CLOSED=1; shift ;;
-    --force_random_cuts) FORCE_RANDOM_CUTS=1; shift ;;
+    --closed) CLOSED=1; OPTS_ARRAY+=("CLOSED_PROTOCOL,$CLOSED"); shift ;;
+    --force_random_cuts) FORCE_RANDOM_CUTS=1; OPTS_ARRAY+=("FORCE_RANDOM_CUTS,$FORCE_RANDOM_CUTS"); shift ;;
     --max_perm_set_size)
       [[ $# -ge 2 && $2 != -* && ( $# -eq 2 || $3 == -* ) ]] || {
         printf 'Invalid number of arguments for %s. Now terminating.\n' "$1"
         exit 2
       }
-      MAX_PERM_SET_SIZE=$2; shift 2 ;;
+      MAX_PERM_SET_SIZE=$2; OPTS_ARRAY+=("MAX_PERM_SET_SIZE,$2"); shift 2 ;;
     --input_poss_security) 
       (($WEAK_SECURITY == -1)) || {
          printf 'Ambiguous security level. Now terminating.\n'
          exit 2
       }
       WEAK_SECURITY=1;
-      TITLE_OPTS="input-possibilistic security";
+      OPTS_ARRAY+=("WEAK_SECURITY,$WEAK_SECURITY");
       shift ;;
     --output_poss_security) 
       (($WEAK_SECURITY == -1)) || {
@@ -125,7 +135,7 @@ while [[ $# -gt 0 ]]; do
          exit 2
       }
       WEAK_SECURITY=2; 
-      TITLE_OPTS="output-possibilistic security";
+      OPTS_ARRAY+=("WEAK_SECURITY,$WEAK_SECURITY");
       shift ;;
     --prob_security) 
       (($WEAK_SECURITY == -1)) || {
@@ -133,9 +143,9 @@ while [[ $# -gt 0 ]]; do
          exit 2
       }
       WEAK_SECURITY=0; 
-      TITLE_OPTS="output-possibilistic security";
+      OPTS_ARRAY+=("WEAK_SECURITY,$WEAK_SECURITY");
       shift ;;
-    --finite_runtime) FINITE_RUNTIME=1; shift ;;
+    --finite_runtime) FINITE_RUNTIME=1; OPTS_ARRAY+=("FINITE_RUNTIME,$FINITE_RUNTIME") ;shift ;;
     --) shift; break ;;
     -*|--*)
       EXTRA_ARG="$1"
@@ -150,17 +160,50 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if (( "$RAW" == 0 )); then
+    UI_OPTS='--json-ui'
+fi
+
+
+OPTS=''                            # Options passed to cbmc
+PRINT_OPTS=''                      # Options that are printed
+TITLE_OPTS="N = $N, L = $LENGTH"   # Options in the plot title
+
+if (( ${#OPTS_ARRAY[@]} != 0 )); then
+    for i in "${OPTS_ARRAY[@]}"; do
+        prettyOpt="${i%%,*} = ${i#*,}"
+        shortOpt="${i%%,*}=${i#*,}"
+
+        if [ "$PRINT_OPTS" != "" ]; then
+            PRINT_OPTS+=", "
+        fi
+        OPTS+="-D ${shortOpt} "
+        PRINT_OPTS+="${i%%,*} = ${i#*,}"
+
+        # TODO comment?
+        if [[ -v title_map[$shortOpt] ]]; then
+            TITLE_OPTS+=", ${title_map[$shortOpt]}"
+        else
+            prettyOpt=$(echo $prettyOpt | tr '[:upper:]' '[:lower:]'  | tr '_' ' ')
+            TITLE_OPTS+=", ${prettyOpt}" 
+        fi
+    done
+    PRINT_OPTS="\n# Further Options: $PRINT_OPTS"
+fi
+
+echo "titleOPts: $TITLE_OPTS"
+
 
 #TODO move somewhere else?
 if [[ "$WEAK_SECURITY" == -1 ]]; then
     WEAK_SECURITY=0
+    OPTS+="-D WEAK_SECURITY=$WEAK_SECURITY"
     echo -e "Security level not set. Using probabilistic security."
 fi
 
 # Filter extra arguments for exact duplicates
 if [ ${#EXTRA_ARGS[@]} -ne 0  ]; then
     printf "Any additional argument may lead to unexpected behaviour!\n"
-    
     FILTERED_EXTRA_ARGS=()
     readarray -td '' FILTERED_EXTRA_ARGS < <(printf '%s\0' "${EXTRA_ARGS[@]}" | sort -uz)
     JOINED_EXTRAS="$(printf "%s" "${FILTERED_EXTRA_ARGS[*]}")" # Join the array into a single string
@@ -240,29 +283,6 @@ then
 fi
 VERSION="# CBMC Version: "$($CBMC -version)
 
-
-OPTS=""
-OPTIONS=""
-
-OPTS="$OPTS -D FORCE_RANDOM_CUTS=$FORCE_RANDOM_CUTS -D WEAK_SECURITY=$WEAK_SECURITY -D CLOSED_PROTOCOL=$CLOSED"
-OPTIONS="$OPTIONS FORCE_RANDOM_CUTS = $FORCE_RANDOM_CUTS, WEAK_SECURITY = $WEAK_SECURITY, CLOSED_PROTOCOL = $CLOSED"
-
-if [ "$MAX_PERM_SET_SIZE" != "" ]; then
-  TITLE_OPTS="MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE, $TITLE_OPTS"
-  OPTS="$OPTS -D MAX_PERM_SET_SIZE=$MAX_PERM_SET_SIZE"
-  OPTIONS="$OPTIONS, MAX_PERM_SET_SIZE = $MAX_PERM_SET_SIZE"
-fi
-
-UI_OPTS=''
-if (( "$RAW" == 0 )); then
-    UI_OPTS='--json-ui'
-fi
-
-FURTHER_OPTIONS=""
-if [ "$OPTIONS" != "" ]
-then
-    FURTHER_OPTIONS='\n'"# Further Options: "$OPTIONS
-fi
 
 fact ()
 {
@@ -351,7 +371,7 @@ COMMAND="$CBMC $JOINED_EXTRAS $UI_OPTS $INSTR_OPTS $TRACE_OPTS -D L=$LENGTH -D N
 {
     printf '\n%s\n' '############################################################'
     printf '%s\n%s\n' "$TIMESTAMP" "$VERSION"
-    printf '%s\n' "# Options: N = $N, NUM_SYM = $NUM_SYM, L = $LENGTH, NUMBER_POSSIBLE_PERMUTATIONS = $POS_PERM, NUMBER_POSSIBLE_SEQUENCES = $POS_SEQ, TIMEOUT = $TIMEOUT$FURTHER_OPTIONS"
+    printf '%b\n' "# Options: N = $N, NUM_SYM = $NUM_SYM, L = $LENGTH, NUMBER_POSSIBLE_PERMUTATIONS = $POS_PERM, NUMBER_POSSIBLE_SEQUENCES = $POS_SEQ, TIMEOUT = $TIMEOUT$PRINT_OPTS"
     if [[ "$VERBOSE" -eq 1 ]]; then
         printf '%s\n' "# Command: $COMMAND"
     fi
@@ -441,8 +461,8 @@ if [[ "$RAW" -eq 0 ]]; then
         --arg runningTime "$DIFF" \
         '$ARGS.named + {cbmcOutput: $cbmcOutput[0]}' > $OUTFILE
 
+    #TODO: what to do when SIGINT?
     rm "$CBMC_JSON" 
-
 fi
 
 
@@ -504,7 +524,6 @@ done
 printf '%s\n' '#####################################################################'
 
 
-
 if [[ "$VERBOSE" -eq 1 ]]; then
 
     if (( ${#PLT_VALS[@]} > 0 && ${#MEM_VALS[@]} > 0)); then
@@ -533,20 +552,6 @@ if [[ "$VERBOSE" -eq 1 ]]; then
             echo "ERROR" 
         else
             AVG_MEM=$(awk -v count=$VALS_COUNT -v sum=$MEM_SUM 'BEGIN { printf "%.2f", sum / count }')
-        fi
-
-        TITLE_OPTS="L = $LENGTH, N = $N, $TITLE_OPTS"
-
-        if [ "$WEAK_SECURITY" == 0 ]; then
-            TITLE_OPTS="$TITLE_OPTS, probabilistic security"
-        fi
-
-        if [ "$CLOSED" == 1 ]; then
-            TITLE_OPTS="$TITLE_OPTS, closed protocol"
-        fi
-
-        if [ "$FORCE_RANDOM_CUTS" == 1 ]; then
-            TITLE_OPTS="$TITLE_OPTS, force random cuts"
         fi
 
 
@@ -608,5 +613,4 @@ if [[ "$RAW" -eq 0 ]]; then
     if [ $? -ne 0 ]; then
         echo "Error in parsing."
     fi
-
 fi
